@@ -1,0 +1,74 @@
+### 1. 点云过滤参数 ###
+combined_x_min = 315       # 整体直通滤波X轴最小值,单位mm
+combined_x_max = 1190      # 直通滤波X轴最大值,单位mm
+combined_y_min = 1150      # 直通滤波Y轴最小值,单位mm
+combined_y_max = 3950      # 直通滤波Y轴最大值,单位mm
+
+left_x_min = 315           # 左侧直通滤波X轴最小值,单位mm
+left_x_max = 1190          # 直通滤波X轴最大值,单位mm
+left_y_min = 1150          # 直通滤波Y轴最小值,单位mm
+left_y_max = 3950          # 直通滤波Y轴最大值,单位mm
+
+right_x_min = 830          # 右侧直通滤波X轴最小值,单位mm
+right_x_max = 1730         # 直通滤波X轴最大值,单位mm
+right_y_min = 1150         # 直通滤波Y轴最小值,单位mm
+right_y_max = 3950         # 直通滤波Y轴最大值,单位mm
+
+left_upper_x_min = 315     # 左边上侧直通滤波X轴最小值,单位mm
+left_upper_x_max = 1190    # 直通滤波X轴最大值,单位mm
+left_upper_y_min = 1150    # 直通滤波Y轴最小值,单位mm
+left_upper_y_max = 3950    # 直通滤波Y轴最大值,单位mm
+
+right_upper_x_min = 830    # 右边上侧直通滤波X轴最小值,单位mm
+right_upper_x_max = 1730   # 直通滤波X轴最大值,单位mm
+right_upper_y_min = 1150   # 直通滤波Y轴最小值,单位mm
+right_upper_y_max = 3950   # 直通滤波Y轴最大值,单位mm
+
+energy_percentage = 0.9                  # 能量值过滤阈值（百分比）
+radius_threshold = 100                   # 激光点云有效半径阈值,单位mm
+radius_num = 100                         # 半径阈值内的最小有效点数
+
+### 2. 点云间隔参数 ###
+x_threshold = 10                         # 按x间隔排序阈值,间隔10mm为一小块进行排序
+y_threshold = 10                         # 按y间隔排序阈值,间隔10mm为一小块进行排序
+z_threshold = 10                         # 按z间隔排序阈值,单位mm
+
+### 3. 数据传输参数 ###
+plc_send_max_retries = 1                 # PLC数据发送最大重试次数
+max_pulse = 160000                       # PLC脉冲最大值,超过此值将重置为0
+
+### 4. 扫描有效性参数 ###
+left_scan_points_threshold = 10          # 左侧激光扫描点云数量阈值,少于此值则不认为是有效数据
+right_scan_points_threshold = 10         # 右侧激光扫描点云数量阈值,少于此值则不认为是有效数据
+left_upper_scan_points_threshold = 10    # 左上侧激光扫描点云数量阈值,少于此值则不认为是有效数据
+right_upper_scan_points_threshold = 10   # 右上侧激光扫描点云数量阈值,少于此值则不认为是有效数据
+max_scan_length = 10000                  # 最大扫描长度,超过此长度自动结束当前工件,单位mm
+swing_threshold = 3                      # 规定区域往复扫描模式下的开始和结束扫描阈值,单位mm
+max_swing_pulse = 3000                   # 规定区域往复扫描模式下的最大扫描范围,单位脉冲
+linked_stop_distance_mm = 100            # 两个方向扫描之间的距离差值阈值,单位mm
+start_skip_mm = 20                       # 启动软件20mm内采集到的工件数据跳过处理
+
+### 5. 运动控制参数 ###
+pulse_to_mm = 8.6                        # 脉冲转毫米系数,六楼实验室链条脉冲转化为12.4mm,信高是7.0
+fifo_unit_mm = 2                         # fifo递增单位,每2mm递增1个单位
+workpiece_fifo_step_mm = 5               # complete_workpiece模式下fifo_frame_pos按5mm量化递增,支持跳变累计
+diff_start_pulse = 1                     # 链条启动脉冲差值阈值,# 连续五帧脉冲最大最小值相差超过7才视为链条开始
+
+### 6. 连接可靠性参数 ###
+lidar_connect_max_retries = 10000        # 激光雷达最大重连次数
+plc_connect_max_retries = 10000          # PLC最大重连次数
+raw_data_timeout_s = 10                  # 链条运动时超过10秒未收到新激光帧则停链保护
+
+### 7. 调试与可视化参数 ###
+translate_data_origin = 1                # 各激光安装方向采数是否采用同一原点(1=同一原点,2=各自原点)
+draw_type = 2                            # 绘制模式(1=点云,2=线框,3=点云+线框)
+workpiece_origin_side = "right"           # 完整工件坐标原点方向(left=左边为原点,right=右边为原点)
+workpiece_origin_reference_x = 2040      # 右边为原点时的换算基准X,转换公式为 x_new = 基准X - x_old,结果保持正值
+
+### 8. 设备堆栈数量 ###
+frame_by_frame_queue_size = 1500         # frame_by_frame 模式队列长度
+complete_workpiece_queue_size = 20       # complete_workpiece 模式队列长度
+
+### 9. 采数模式 ###
+threadpool_size = 3                      # 线程池大小
+fifo_reverse_tolerance = 10              # fifo后退超过10认为是异常, 否则忽略
