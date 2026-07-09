@@ -4,7 +4,7 @@ from model.motionplan.MotionManualOutFxPlanning import MotionManualOutFxPlanning
 from model.motionplan.MotionOutFxPlanning import MotionOutFxPlanning
 from model.motionplan.MotionOutRotatePlanning import MotionOutRotatePlanning
 from model.motionplan.MotionToTarget import MotionToTarget
-from model.plc.MovingFrameData import SendMovingFrameData, AxisData
+from model.plc.MovingFrameData import SendMovingFrameData, create_axis_list
 
 
 class MotionFrameByFramePlanning:
@@ -25,7 +25,7 @@ class MotionFrameByFramePlanning:
 
         # 获取使能状态：Operate 的 bit0
         plc_enable = (proc.plc_data.Operate & 0x01) == 1
-        axis_list = [AxisData() for _ in range(48)]
+        axis_list = create_axis_list()
         # 检查伺服状态
         servo_alarm = proc.plc_data.Status != 1
 

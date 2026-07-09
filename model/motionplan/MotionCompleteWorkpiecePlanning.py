@@ -9,7 +9,7 @@ from model.motionplan.MotionOutLiftPlanning import MotionOutLiftPlanning
 from model.motionplan.MotionOutUpPlanning import MotionOutUpPlanning
 from model.motionplan.MotionToTarget import MotionToTarget
 from model.motionplan.MotionXNSidePlanning import MotionXNSidePlanning
-from model.plc.MovingFrameData import SendMovingFrameData, AxisData
+from model.plc.MovingFrameData import SendMovingFrameData, create_axis_list
 from model.utils.LoggerUtil import logger
 
 
@@ -50,7 +50,7 @@ class MotionCompleteWorkpiecePlanning:
 
         # 获取使能状态：Operate 的 bit0
         plc_enable = (proc.plc_data.Operate & 0x01) == 1
-        axis_list = [AxisData() for _ in range(48)]
+        axis_list = create_axis_list()
         # 检查伺服状态
         servo_alarm = proc.plc_data.Status != 1
 
