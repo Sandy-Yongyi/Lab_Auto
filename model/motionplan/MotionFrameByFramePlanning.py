@@ -25,7 +25,7 @@ class MotionFrameByFramePlanning:
 
         # 获取使能状态：Operate 的 bit0
         plc_enable = (proc.plc_data.Operate & 0x01) == 1
-        axis_list = [AxisData() for _ in range(32)]
+        axis_list = [AxisData() for _ in range(48)]
         # 检查伺服状态
         servo_alarm = proc.plc_data.Status != 1
 

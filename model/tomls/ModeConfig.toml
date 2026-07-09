@@ -3,3 +3,6 @@ spray_mode = 0
 
 # 主界面按钮操作密码
 auth_password = "hc123456"
+
+# 是否需要输入密码, true为需要, false为不需要
+require_password = false

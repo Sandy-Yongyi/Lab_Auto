@@ -115,7 +115,7 @@ class MotionToTarget:
                 safe_target = self._clamp_axis_target(axis_name, safe_pos, min_limit, max_limit)
                 axis_speed_limit = self._get_axis_speed_limit(machine_cfg, axis_name)
 
-                if axis_name == "y":
+                if axis_name.startswith("y"):
                     # Y 轴始终直接回安全位
                     cmd = build_axis(safe_target, y_pos_speed, 0, axis_speed_limit)
                 elif axis_name == "z":
@@ -156,7 +156,7 @@ class MotionToTarget:
                         cmd = build_axis(safe_target, chain_speed, 0, axis_speed_limit)
                     else:
                         cmd = build_axis(safe_target, z_zeroing_speed, 0, axis_speed_limit)
-                elif axis_name == "y":
+                elif axis_name.startswith("y"):
                     if not x_ready:
                         cmd = build_axis(clamp_to_limit_yx(cur_pos, min_limit, max_limit), y_pos_speed, 0, axis_speed_limit)
                     else:
@@ -197,7 +197,7 @@ class MotionToTarget:
         axis_type_list = machine_cfg.get("axis_type", [])
         axis_map = get_axis_map(machine_type, orientation)
         for axis_name in axis_type_list:
-            if axis_name == "y" and axis_name in axis_map:
+            if axis_name.startswith("y") and axis_name in axis_map:
                 cur_pos = self._get_axis_current_pos(plc_data, axis_map[axis_name])
                 min_limit, max_limit = get_axis_position_limits(machine_cfg, axis_name)
                 target_pos = self._clamp_axis_target(axis_name, self._get_axis_safe_pos(machine_cfg, axis_name), min_limit, max_limit)

@@ -14,6 +14,7 @@ from model.plot.Draw import PointCloudVisualizer
 from model.dataprocess.DataFilter import DataFilter
 from view.MachineConfigFrame import MachineConfigFrame
 from view.PasswordDialog import PasswordDialog
+from model.utils.PasswordConfig import is_password_required
 from control.LidarAcquisitionProcess import LidarAcquisitionProcess
 from control.PlcCommunicationProcess import PlcCommunicationProcess
 from model.utils.LoggerUtil import logger, manage_log_files, log_directory
@@ -67,12 +68,9 @@ class MainFrameController(MainFrame):
         # 绑定按钮事件
         self.start_btn.Bind(wx.EVT_BUTTON, self._handle_start_with_password)
         self.stop_btn.Bind(wx.EVT_BUTTON, self._handle_stop_with_password)
-        self.left_out_down_btn.Bind(wx.EVT_BUTTON, lambda e: self._open_machine_config_with_password(2))
-        self.right_in_up_btn.Bind(wx.EVT_BUTTON, lambda e: self._open_machine_config_with_password(0))
-        self.left_out_up_btn.Bind(wx.EVT_BUTTON, lambda e: self._open_machine_config_with_password(4))
-        self.left_out_lift_btn.Bind(wx.EVT_BUTTON, lambda e: self._open_machine_config_with_password(5))
-        self.right_xn_side_btn.Bind(wx.EVT_BUTTON, lambda e: self._open_machine_config_with_password(1))
-        self.right_out_up_btn.Bind(wx.EVT_BUTTON, lambda e: self._open_machine_config_with_password(3))
+        self.left_out_fx_btn.Bind(wx.EVT_BUTTON, lambda e: self._open_machine_config_with_password(0))
+        self.left_xn_side_btn.Bind(wx.EVT_BUTTON, lambda e: self._open_machine_config_with_password(1))
+        self.right_xn_side_btn.Bind(wx.EVT_BUTTON, lambda e: self._open_machine_config_with_password(2))
         self.Bind(wx.EVT_CLOSE, self.on_close)
 
     def _ensure_password_config(self):
@@ -89,7 +87,13 @@ class MainFrameController(MainFrame):
         password = str(self.mode_config.get("auth_password", "123456") or "123456")
         return password
 
+    def _is_password_required(self):
+        return is_password_required(self.mode_config_path)
+
     def _verify_button_password(self):
+        if not self._is_password_required():
+            return True
+
         dialog = PasswordDialog(self, account_name="河村电器")
         result = dialog.ShowModal()
         input_password = dialog.get_password()

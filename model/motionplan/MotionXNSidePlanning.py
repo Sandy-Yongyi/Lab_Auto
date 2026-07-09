@@ -947,6 +947,10 @@ class MotionXNSidePlanning:
 
     def _get_axis_pos(self, machine_cfg, plc_data, axis_name):
         axis_map = get_axis_map(machine_cfg.get("type", ""), machine_cfg.get("install_orietation", "right"))
+        if axis_name == "y" and axis_name not in axis_map:
+            y_axes = [name for name in axis_map if name.startswith("y")]
+            if y_axes:
+                axis_name = y_axes[0]
         return self.motiontotarget._get_axis_current_pos(plc_data, axis_map[axis_name])
 
     @staticmethod

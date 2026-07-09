@@ -30,18 +30,21 @@ class MachineConfigFrame(wx.Dialog):
     }
 
     DEVICE_PARAM_KEYS = {
-        2: [
-            "out_front_x_offset", "out_after_x_offset", "x_pos_speed", "x_recip_speed",
-            "out_down_y_offset", "y_pos_speed", "y_recip_speed", "out_z_front_offset", "out_z_after_offset",
-        ],
-        4: ["out_z_front_offset", "out_z_after_offset"],
-        5: ["out_front_x_offset", "out_z_front_offset", "out_z_after_offset"],
         0: [
-            "in_front_x_offset", "in_after_x_offset", "x_pos_speed", "x_recip_speed",
-            "origin_pos", "in_up_y_offset", "in_z_front_offset", "in_z_after_offset",
+            "out_front_x_offset", "out_after_x_offset", "in_front_x_offset", "in_after_x_offset", "x_pos_speed", "x_recip_speed",
+            "x_status_offset",
+            "out_up_y_offset", "out_down_y_offset", "in_up_y_offset", "in_down_y_offset", "y_pos_speed", "y_recip_speed",
+            "out_z_front_offset", "out_z_after_offset", "in_z_front_offset", "in_z_after_offset", "z_back_speed", "z_zeroing_speed",
+            "outside_total_cycles", "inside_total_cycles", "recip_reduce_distance",
         ],
-        3: ["out_z_front_offset", "out_z_after_offset"],
         1: [
+            "out_front_x_offset", "out_after_x_offset", "in_front_x_offset", "in_after_x_offset", "x_pos_speed", "x_recip_speed",
+            "x_status_offset",
+            "out_up_y_offset", "out_down_y_offset", "in_up_y_offset", "in_down_y_offset", "y_pos_speed", "y_recip_speed",
+            "out_z_front_offset", "out_z_after_offset", "in_z_front_offset", "in_z_after_offset", "z_back_speed", "z_zeroing_speed",
+            "outside_total_cycles", "inside_total_cycles", "recip_reduce_distance",
+        ],
+        2: [
             "out_front_x_offset", "out_after_x_offset", "in_front_x_offset", "in_after_x_offset", "x_pos_speed", "x_recip_speed",
             "x_status_offset",
             "out_up_y_offset", "out_down_y_offset", "in_up_y_offset", "in_down_y_offset", "y_pos_speed", "y_recip_speed",
@@ -71,7 +74,7 @@ class MachineConfigFrame(wx.Dialog):
 
     def _uses_dual_config_pages(self):
         machine_type = self.machine_cfg.get("type")
-        return self.sn in (1, 5) or machine_type in ("xn_side", "out_lift")
+        return machine_type == "xn_side"
 
     def _build_param_grid(self, parent, ctrls: dict):
         grid = wx.FlexGridSizer(rows=0, cols=2, hgap=8, vgap=8)
