@@ -31,11 +31,8 @@ class MachineConfigFrame(wx.Dialog):
 
     DEVICE_PARAM_KEYS = {
         0: [
-            "out_front_x_offset", "out_after_x_offset", "in_front_x_offset", "in_after_x_offset", "x_pos_speed", "x_recip_speed",
-            "x_status_offset",
-            "out_up_y_offset", "out_down_y_offset", "in_up_y_offset", "in_down_y_offset", "y_pos_speed", "y_recip_speed",
-            "out_z_front_offset", "out_z_after_offset", "in_z_front_offset", "in_z_after_offset", "z_back_speed", "z_zeroing_speed",
-            "outside_total_cycles", "inside_total_cycles", "recip_reduce_distance",
+            "out_front_x_offset", "x_pos_speed", "x_recip_speed", "x_status_offset", "out_up_y_offset", "out_down_y_offset", "y_pos_speed", "y_recip_speed",
+            "out_z_front_offset", "out_z_after_offset", "z_back_speed", "z_zeroing_speed", "outside_total_cycles", "recip_reduce_distance",
         ],
         1: [
             "out_front_x_offset", "out_after_x_offset", "in_front_x_offset", "in_after_x_offset", "x_pos_speed", "x_recip_speed",

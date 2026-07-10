@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from model.motionplan.motionutil.DeviceQueueHelper import DeviceQueueHelper
 from model.motionplan.MachineAxisMap import apply_device_axes_to_list
-from model.motionplan.MotionInUpPlanning import MotionInUpPlanning
-from model.motionplan.MotionOutDowmPlanning import MotionOutDownPlanning
 from model.motionplan.MotionCleaningPlanning import MotionCleaningPlanning
-from model.motionplan.MotionOutLiftPlanning import MotionOutLiftPlanning
-from model.motionplan.MotionOutUpPlanning import MotionOutUpPlanning
 from model.motionplan.MotionToTarget import MotionToTarget
 from model.motionplan.MotionXNSidePlanning import MotionXNSidePlanning
 from model.plc.MovingFrameData import SendMovingFrameData, create_axis_list
@@ -19,12 +15,8 @@ class MotionCompleteWorkpiecePlanning:
     def __init__(self):
         self.device_queue_helper = DeviceQueueHelper()
         self.cleaning_planner = MotionCleaningPlanning()
-        self.out_lift_planner = MotionOutLiftPlanning()
-        self.in_up_planner = MotionInUpPlanning()
         self.xn_side_planner = MotionXNSidePlanning()
         self.motion_to_target = MotionToTarget()
-        self.out_down_planner = MotionOutDownPlanning()
-        self.out_up_planner = MotionOutUpPlanning()
 
     def build_moving_frame(self, proc) -> SendMovingFrameData:
         """
@@ -62,8 +54,6 @@ class MotionCompleteWorkpiecePlanning:
             stop_chain = True
 
         # 外二维运动
-        self._handle_out_lift(proc, moving_frame)
-
         effective_operate = 0 if force_disable_all else proc.plc_data.Operate
         clean_mode_enabled, clean_mode_ready = self._resolve_clean_mode_state(proc, force_disable_all)
         clean_mode_just_closed = self._is_clean_mode_just_closed(proc, clean_mode_enabled)
@@ -74,8 +64,6 @@ class MotionCompleteWorkpiecePlanning:
         for sn in range(proc.num_devices):
             machine_cfg = proc.machine_config.get(str(sn))
             if not machine_cfg:
-                continue
-            if machine_cfg.get("type", "") == "out_lift":
                 continue
             runtime_cfg = proc.runtime_machine_config.get(sn, {})
             direction = str(machine_cfg.get("install_orietation", "") or "").strip()
@@ -96,11 +84,9 @@ class MotionCompleteWorkpiecePlanning:
 
             # 检查该设备的 Operate 位是否开启
             # SN 与位顺序：
-            #   sn0 -> in_up
+            #   sn0 -> out_fx
             #   sn1 -> xn_side
-            #   sn2 -> in_lift
-            #   sn3 -> out_down
-            #   sn4/sn5 -> out_up
+            #   sn2 -> xn_side
             # 因此 sn 0-5 依次对应 bit1-bit6
             device_bit = sn + 1
             device_operate_enabled = (effective_operate & (1 << device_bit)) != 0
@@ -145,28 +131,7 @@ class MotionCompleteWorkpiecePlanning:
 
                 machine_type = machine_cfg.get("type", "")
                 device_stop_chain = False
-                if machine_type == "in_up":
-                    axis_cmds, done, device_stop_chain = self.in_up_planner.auto_in_up_move(
-                        machine_cfg=machine_cfg,
-                        runtime_cfg=runtime_cfg,
-                        plc_data=proc.plc_data,
-                        frame_queue=device_queue,
-                    )
-                elif machine_type == "out_down":
-                    axis_cmds, done, device_stop_chain = self.out_down_planner.auto_out_down_move(
-                        machine_cfg=machine_cfg,
-                        runtime_cfg=runtime_cfg,
-                        plc_data=proc.plc_data,
-                        frame_queue=device_queue,
-                    )
-                elif machine_type == "out_up":
-                    axis_cmds, done, device_stop_chain = self.out_up_planner.auto_out_up_move(
-                        machine_cfg=machine_cfg,
-                        runtime_cfg=runtime_cfg,
-                        plc_data=proc.plc_data,
-                        frame_queue=device_queue,
-                    )
-                elif machine_type == "xn_side":
+                if machine_type == "xn_side":
                     axis_cmds, done, device_stop_chain = self.xn_side_planner.auto_xn_side_machine_move(
                         machine_cfg=machine_cfg,
                         runtime_cfg=runtime_cfg,
@@ -199,18 +164,6 @@ class MotionCompleteWorkpiecePlanning:
         moving_frame.Operate = 0 if stop_chain else 0x02
         # logger.info(f"生成 SendMovingFrameData: Enable={moving_frame.Enable:032b}, Operate={moving_frame.Operate}")
         return moving_frame
-
-    def _handle_out_lift(self, proc, moving_frame):
-        for lift_sn, lift_machine_cfg in self.device_queue_helper.iter_machine_cfgs_by_type(proc.machine_config, "out_lift"):
-            lift_direction = str(lift_machine_cfg.get("install_orietation", "") or "").strip()
-            lift_queue = self.device_queue_helper.get_device_queue(proc.machine_config, proc.frame_queue_manager, lift_sn)
-            if not lift_direction or lift_queue is None:
-                continue
-            runtime_cfg = proc.runtime_machine_config.get(lift_sn, {})
-            lift_axis, lift_done = self.out_lift_planner.auto_out_lift_machine_move(lift_machine_cfg, runtime_cfg, lift_queue)
-            moving_frame.Left2DLiftData = lift_axis
-            if lift_done:
-                proc.after_spray_complete(lift_direction, lift_sn)
 
     def _resolve_clean_mode_state(self, proc, force_disable_all):
         clean_mode_enabled = (not force_disable_all) and self.cleaning_planner.is_clean_mode_enabled(proc.plc_data.Operate)

@@ -1,8 +1,6 @@
-from model.motionplan.MotionInLiftPlanning import MotionInLiftPlanning
 from model.motionplan.MachineAxisMap import apply_device_axes_to_list
 from model.motionplan.MotionManualOutFxPlanning import MotionManualOutFxPlanning
-from model.motionplan.MotionOutFxPlanning import MotionOutFxPlanning
-from model.motionplan.MotionOutRotatePlanning import MotionOutRotatePlanning
+from model.motionplan.MotionOutFxFramePlanning import MotionOutFxPlanning
 from model.motionplan.MotionToTarget import MotionToTarget
 from model.plc.MovingFrameData import SendMovingFrameData, create_axis_list
 
@@ -13,8 +11,6 @@ class MotionFrameByFramePlanning:
     def __init__(self):
         self.out_fx_planner = MotionOutFxPlanning()
         self.manual_out_fx_planner = MotionManualOutFxPlanning()
-        self.in_lift_planner = MotionInLiftPlanning()
-        self.out_rotate_planner = MotionOutRotatePlanning()
         self.motion_to_target = MotionToTarget()
 
     def build_moving_frame(self, proc) -> SendMovingFrameData:
@@ -55,28 +51,7 @@ class MotionFrameByFramePlanning:
                 device_just_closed = last_device_operate and not device_operate_enabled
 
                 if not device_operate_enabled:
-                    machine_type = machine_cfg.get("type", "")
-                    continue_after_disable = False
-                    device_stop_chain = False
-
-                    if machine_type == "out_rotate" and device_just_closed:
-                        self.out_rotate_planner.request_finish_after_current_recip(sn)
-
-                    if machine_type == "out_rotate":
-                        continue_after_disable = self.out_rotate_planner.should_continue_after_disable(sn)
-
-                    if continue_after_disable:
-                        axis_cmds, all_ready, device_stop_chain = self.out_rotate_planner.auto_out_rotate_move(
-                            machine_cfg=machine_cfg,
-                            runtime_cfg=runtime_cfg,
-                            spray_cfg=proc.runtime_spray_config,
-                            plc_data=proc.plc_data,
-                            frame_queue_manager=proc.frame_queue_manager,
-                        )
-                        proc.device_returning_to_origin[sn] = not all_ready
-                        if not force_disable_by_lidar:
-                            stop_chain = device_stop_chain
-                    elif device_just_closed or proc.device_returning_to_origin[sn]:
+                    if device_just_closed or proc.device_returning_to_origin[sn]:
                         axis_cmds, all_ready = self.motion_to_target.move_to_origin_safe(machine_cfg, runtime_cfg, proc.plc_data)
                         proc.device_returning_to_origin[sn] = not all_ready
                     else:
@@ -96,26 +71,10 @@ class MotionFrameByFramePlanning:
 
                     machine_type = machine_cfg.get("type", "")
                     device_stop_chain = False
-                    if machine_type == "out_rotate":
-                        axis_cmds, _, device_stop_chain = self.out_rotate_planner.auto_out_rotate_move(
-                            machine_cfg=machine_cfg,
-                            runtime_cfg=runtime_cfg,
-                            spray_cfg=proc.runtime_spray_config,
-                            plc_data=proc.plc_data,
-                            frame_queue_manager=proc.frame_queue_manager,
-                        )
-                    elif machine_type == "out_fx":
+                    if machine_type == "out_fx":
                         axis_cmds, _, device_stop_chain = self.out_fx_planner.auto_out_fx_move(
                             machine_cfg=machine_cfg,
                             runtime_cfg=runtime_cfg,
-                            plc_data=proc.plc_data,
-                            frame_queue_manager=proc.frame_queue_manager,
-                        )
-                    elif machine_type == "in_lift":
-                        axis_cmds, _, device_stop_chain = self.in_lift_planner.auto_in_lift_move(
-                            machine_cfg=machine_cfg,
-                            runtime_cfg=runtime_cfg,
-                            spray_cfg=proc.runtime_spray_config,
                             plc_data=proc.plc_data,
                             frame_queue_manager=proc.frame_queue_manager,
                         )
