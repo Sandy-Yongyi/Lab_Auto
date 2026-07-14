@@ -9,7 +9,7 @@ from model.motionplan.MachineAxisMap import (
     get_axis_safe_pos,
     get_axis_speed_limit,
 )
-from model.motionplan.motionutil.FrameSearchHelper import FrameSearchHelper, FrameWindow
+from model.motionplan.motionutil.FrameSearchHelper import FrameSearchHelper
 from model.motionplan.motionutil.FrameXMotionHelper import FrameXMotionHelper
 
 

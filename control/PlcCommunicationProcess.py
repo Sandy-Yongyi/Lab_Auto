@@ -357,7 +357,7 @@ class PlcCommunicationProcess(multiprocessing.Process):
                 # 接收并处理PLC数据
                 self.plc_data = self.plc.scan(self.connection_type)
                 chaincountcm = self._pulse_to_chaincountcm(self.plc_data.ChainPulse)
-                self.plc_data.ChainCountCM = chaincountcm
+                setattr(self.plc_data, "ChainCountCM", chaincountcm)
                 self._update_chain_status(chaincountcm, self.plc_data.ChainPulse)
 
                 logger.info(f"plc tcp recv data: self.plc_data.AxisList: {self.plc_data.AxisList}")
@@ -417,7 +417,7 @@ class PlcCommunicationProcess(multiprocessing.Process):
         if last_status != status:
             if status in ("moving_forward", "moving_reverse") and last_status == "stopped":
                 self._reset_raw_data_timeout_timer(fifo=fifo)
-            logger.info(f"PLC chain status changed: pulse={pulse}, fifo={fifo}, status={status}")
+        logger.info(f"PLC chain status changed: pulse={pulse}, fifo={fifo}, status={status}")
         self.pulse_queue.put({"pulse": pulse, "fifo": fifo, "status": status})
 
     def _update_lidar_status_from_packet(self, fifo_data: dict):

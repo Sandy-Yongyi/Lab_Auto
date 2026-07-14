@@ -76,7 +76,7 @@ class MotionFrameByFramePlanning:
                         frame_queue_manager=proc.frame_queue_manager,
                     )
 
-                    stop_chain = stop_chain or device_stop_chain
+                    stop_chain = device_stop_chain
 
                     if axis_cmds:
                         apply_device_axes_to_list(proc.machine_config, sn, axis_cmds, axis_list)
