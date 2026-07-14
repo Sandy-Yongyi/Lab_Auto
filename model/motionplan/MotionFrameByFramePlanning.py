@@ -1,6 +1,6 @@
 from model.motionplan.MachineAxisMap import apply_device_axes_to_list
 from model.motionplan.MotionManualOutFxPlanning import MotionManualOutFxPlanning
-from model.motionplan.MotionOutFxFramePlanning import MotionOutFxPlanning
+from model.motionplan.MotionOutFxFramePlanning import MotionOutFxFramePlanning
 from model.motionplan.MotionToTarget import MotionToTarget
 from model.plc.MovingFrameData import SendMovingFrameData, create_axis_list
 
@@ -9,7 +9,7 @@ class MotionFrameByFramePlanning:
     """frame_by_frame / continuous_bidirectional 模式运动执行。"""
 
     def __init__(self):
-        self.out_fx_planner = MotionOutFxPlanning()
+        self.out_fx_planner = MotionOutFxFramePlanning()
         self.manual_out_fx_planner = MotionManualOutFxPlanning()
         self.motion_to_target = MotionToTarget()
 
@@ -69,19 +69,14 @@ class MotionFrameByFramePlanning:
                     proc.device_returning_to_origin[sn] = False
                     proc.device_origin_complete[sn] = False
 
-                    machine_type = machine_cfg.get("type", "")
-                    device_stop_chain = False
-                    if machine_type == "out_fx":
-                        axis_cmds, _, device_stop_chain = self.out_fx_planner.auto_out_fx_move(
-                            machine_cfg=machine_cfg,
-                            runtime_cfg=runtime_cfg,
-                            plc_data=proc.plc_data,
-                            frame_queue_manager=proc.frame_queue_manager,
-                        )
-                    else:
-                        axis_cmds = self.motion_to_target.hold_current_position(machine_cfg, proc.plc_data)
+                    axis_cmds, _, device_stop_chain = self.out_fx_planner.auto_out_fx_move(
+                        machine_cfg=machine_cfg,
+                        runtime_cfg=runtime_cfg,
+                        plc_data=proc.plc_data,
+                        frame_queue_manager=proc.frame_queue_manager,
+                    )
 
-                    stop_chain = device_stop_chain
+                    stop_chain = stop_chain or device_stop_chain
 
                     if axis_cmds:
                         apply_device_axes_to_list(proc.machine_config, sn, axis_cmds, axis_list)

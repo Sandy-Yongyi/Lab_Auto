@@ -1,8 +1,22 @@
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class FrameWindow:
+    """按帧运动使用的 Z 轴窗口索引。"""
+
+    start: int
+    center: int
+    end: int
+
+
 class FrameSearchHelper:
     """帧数据搜索辅助类。"""
 
     def __init__(self, z_threshold: int = 10):
-        self.z_threshold = z_threshold
+        self.z_threshold = int(z_threshold)
+        if self.z_threshold <= 0:
+            raise ValueError(f"z_threshold 必须大于 0，当前值: {z_threshold}")
 
     def get_side_frames(self, machine_cfg, frame_queue_manager):
         direction = self.get_side_direction(machine_cfg)
@@ -17,6 +31,39 @@ class FrameSearchHelper:
 
     def get_upper_direction(self, machine_cfg):
         return "left_upper" if machine_cfg.get("install_orietation", "left") == "left" else "right_upper"
+
+    def create_window(self, start: int, center: int, end: int,
+                      frame_count: int) -> FrameWindow:
+        """建立单调且不超过帧队列长度的窗口索引。"""
+        last_index = max(0, int(frame_count or 0) - 1)
+        start = max(0, min(int(start), last_index))
+        center = max(start, min(int(center), last_index))
+        end = max(center, min(int(end), last_index))
+        return FrameWindow(start=start, center=center, end=end)
+
+    def build_window(self, machine_cfg, runtime_cfg, z_cur: int,
+                     frame_count: int) -> FrameWindow:
+        """根据设备定位、当前 Z 位置和前后偏移建立动态窗口。"""
+        z_position = int(machine_cfg.get("z_position", 0) or 0)
+        front_offset = int(
+            runtime_cfg.get(
+                "out_z_front_offset",
+                machine_cfg.get("out_z_front_offset", 0),
+            ) or 0
+        )
+        after_offset = int(
+            runtime_cfg.get(
+                "out_z_after_offset",
+                machine_cfg.get("out_z_after_offset", 0),
+            ) or 0
+        )
+        center_z = z_position + int(z_cur or 0)
+        return self.create_window(
+            int((center_z - front_offset) / self.z_threshold),
+            int(center_z / self.z_threshold),
+            int((center_z + after_offset) / self.z_threshold),
+            frame_count,
+        )
 
     def get_frame_by_index(self, frames, index):
         if index < 0 or index >= len(frames):
@@ -40,6 +87,51 @@ class FrameSearchHelper:
         if frame is None or not getattr(frame, "FrameData", None):
             return False
         return any(self.row_has_data(row) for row in frame.FrameData)
+
+    def has_start_signature(self, frames, window: FrameWindow, count: int) -> bool:
+        """窗口前端连续 count 帧有数据且其余帧为空时判定开始。"""
+        count = int(count or 0)
+        window_length = window.end - window.start + 1
+        if count <= 0 or count >= window_length:
+            return False
+
+        boundary_end = window.start + count
+        return (
+            all(
+                self.frame_has_data(self.get_frame_by_index(frames, index))
+                for index in range(window.start, boundary_end)
+            )
+            and all(
+                not self.frame_has_data(self.get_frame_by_index(frames, index))
+                for index in range(boundary_end, window.end + 1)
+            )
+        )
+
+    def has_end_signature(self, frames, window: FrameWindow, count: int) -> bool:
+        """窗口后端连续 count 帧有数据且其余帧为空时判定结束。"""
+        count = int(count or 0)
+        window_length = window.end - window.start + 1
+        if count <= 0 or count >= window_length:
+            return False
+
+        boundary_start = window.end - count + 1
+        return (
+            all(
+                not self.frame_has_data(self.get_frame_by_index(frames, index))
+                for index in range(window.start, boundary_start)
+            )
+            and all(
+                self.frame_has_data(self.get_frame_by_index(frames, index))
+                for index in range(boundary_start, window.end + 1)
+            )
+        )
+
+    def window_is_empty(self, frames, window: FrameWindow) -> bool:
+        """判断整个 Z 窗口是否已经没有有效数据。"""
+        return all(
+            not self.frame_has_data(self.get_frame_by_index(frames, index))
+            for index in range(window.start, window.end + 1)
+        )
 
     def frame_has_y_in_band(self, frame, y_lower, y_upper):
         if frame is None or not getattr(frame, "FrameData", None):
@@ -103,6 +195,22 @@ class FrameSearchHelper:
                     if x_max != 0:
                         x_values.append(x_max)
         return x_values
+
+    def collect_x_range(self, frames, window: FrameWindow,
+                        y_min: int, y_max: int):
+        """在完整 Z 窗口和指定 Y 区间中收集 X 最小值及最大值。"""
+        y_start = min(int(y_min), int(y_max))
+        y_end = max(int(y_min), int(y_max))
+        values = self.collect_x_values(
+            frames,
+            window.start,
+            window.end,
+            y_start,
+            y_end,
+        )
+        if not values:
+            return None, None
+        return min(values), max(values)
 
     def scan_vertical_range_by_row_window(self, frame, start_row, end_row):
         if frame is None or not getattr(frame, "FrameData", None):

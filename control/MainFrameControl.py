@@ -9,7 +9,7 @@ from control.DataProcessWorker import DataProcessWorker
 from view.MainFrame import MainFrame
 from model.utils.TomlLoader import TomlLoader
 from model.utils.LidarDirectionUtil import get_active_directions, get_active_lidar_config
-from model.utils.StrategyUtil import is_complete_workpiece_mode, validate_strategy_name
+from model.utils.StrategyUtil import is_complete_workpiece_mode, strategy_name_from_code
 from model.plot.Draw import PointCloudVisualizer
 from model.dataprocess.DataFilter import DataFilter
 from view.MachineConfigFrame import MachineConfigFrame
@@ -59,6 +59,7 @@ class MainFrameController(MainFrame):
         self.sys_config = TomlLoader.load(f"{self.toml_path}\\SystemConfig.toml")
         self.spray_config = TomlLoader.load(f"{self.toml_path}\\SprayConfig.toml")
         self.mode_config = TomlLoader.load(self.mode_config_path)
+        self.strategy_name = strategy_name_from_code(self.mode_config.get("strategy_name"))
         self._ensure_password_config()
 
         # 重定向标准输出
@@ -130,7 +131,12 @@ class MainFrameController(MainFrame):
             return
 
         # 传递控制队列给对话框
-        dlg = MachineConfigFrame(self, sn, self.control_queue)
+        dlg = MachineConfigFrame(
+            self,
+            sn,
+            self.control_queue,
+            strategy_name=self.strategy_name,
+        )
         dlg.ShowModal()
         dlg.Destroy()
 
@@ -148,14 +154,14 @@ class MainFrameController(MainFrame):
         self.mode_config = TomlLoader.load(self.mode_config_path)
         spray_mode = int(self.mode_config.get("spray_mode", 0) or 0)
         mode_text = "手动模式" if spray_mode == 1 else "自动模式"
-        print(f"当前喷涂模式：{mode_text}")
+        print(f"当前喷涂模式：{self.strategy_name}")
         logger.info(f"Current spray mode: {mode_text} (spray_mode={spray_mode})")
 
         # 启动激光采集进程，支持三种策略:
         # continuous_bidirectional：为往复采集，0-3000或者3000-0，不间断采数，只在端点停止采数。（沙特项目）
         # frame_by_frame：为逐帧采集并逐帧数据发送，可跟进fifo进行数据递增堆栈，（星沙、新疆大道等项目）
         # complete_workpiece：为完成工件采集，每个工件采集完后进行分区及分枪处理再进行整个工件的数据发送。（上海展会、河村、欧瑞等项目）
-        strategy_name = validate_strategy_name("complete_workpiece")
+        strategy_name = self.strategy_name
 
         if self.control_type == 1:
             # --------------------------调试数据处理----------------------------------------

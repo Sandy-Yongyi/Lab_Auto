@@ -4,6 +4,9 @@ from control.MachineConfigFrameControl import load_machine_config_for_ui, save_m
 
 class MachineConfigFrame(wx.Dialog):
     PARAM_LABELS = {
+        "tracking": "是否跟踪(0否/1是)",
+        "y_move_min": "Y轴往复最小位置(mm)",
+        "y_move_max": "Y轴往复最大位置(mm)",
         "out_front_x_offset": "外侧前X轴偏移(mm)",
         "out_after_x_offset": "外侧后X轴偏移(mm)",
         "in_front_x_offset": "内侧前X轴偏移(mm)",
@@ -29,6 +32,26 @@ class MachineConfigFrame(wx.Dialog):
         "recip_reduce_distance": "往复减少距离(mm)",
     }
 
+    FRAME_BY_FRAME_PARAM_KEYS = [
+        "tracking",
+        "y_move_min",
+        "y_move_max",
+        "out_front_x_offset",
+        "out_after_x_offset",
+        "x_pos_speed",
+        "x_recip_speed",
+        "out_up_y_offset",
+        "out_down_y_offset",
+        "y_pos_speed",
+        "y_recip_speed",
+        "out_z_front_offset",
+        "out_z_after_offset",
+        "z_back_speed",
+        "z_zeroing_speed",
+        "x_status_offset",
+        "outside_total_cycles",
+    ]
+
     DEVICE_PARAM_KEYS = {
         0: [
             "out_front_x_offset", "x_pos_speed", "x_recip_speed", "x_status_offset", "out_up_y_offset", "out_down_y_offset", "y_pos_speed", "y_recip_speed",
@@ -50,14 +73,16 @@ class MachineConfigFrame(wx.Dialog):
         ],
     }
 
-    def __init__(self, parent, sn: int, control_queue=None, title_prefix="设备参数设置"):
+    def __init__(self, parent, sn: int, control_queue=None,
+                 strategy_name="frame_by_frame", title_prefix="设备参数设置"):
         super().__init__(parent, title=f"{title_prefix} - SN[{sn}]",
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.sn = sn
         self.control_queue = control_queue
+        self.strategy_name = strategy_name
         self.ctrls = {}
         self.flat_ctrls = {}
-        self.machine_cfg = load_machine_config_for_ui(self.sn)
+        self.machine_cfg = load_machine_config_for_ui(self.sn, self.strategy_name)
         self.PARAM_ORDER = self._get_param_order_for_config(sn, self.machine_cfg)
         self._build_ui()
         self._load_values()
@@ -66,12 +91,15 @@ class MachineConfigFrame(wx.Dialog):
 
     def _get_param_order_for_config(self, sn: int, machine_cfg: dict):
         """根据SN号返回需要显示的参数列表"""
-        keys = self.DEVICE_PARAM_KEYS.get(sn, [])
+        if self.strategy_name == "frame_by_frame":
+            keys = self.FRAME_BY_FRAME_PARAM_KEYS
+        else:
+            keys = self.DEVICE_PARAM_KEYS.get(sn, [])
         return [(key, self.PARAM_LABELS[key]) for key in keys if key in self.PARAM_LABELS]
 
     def _uses_dual_config_pages(self):
         machine_type = self.machine_cfg.get("type")
-        return machine_type == "xn_side"
+        return self.strategy_name == "complete_workpiece" and machine_type == "xn_side"
 
     def _build_param_grid(self, parent, ctrls: dict):
         grid = wx.FlexGridSizer(rows=0, cols=2, hgap=8, vgap=8)
@@ -152,7 +180,7 @@ class MachineConfigFrame(wx.Dialog):
                 ctrl.SetValue(str(fallback_values[key]))
 
     def _load_values(self):
-        cfg = self.machine_cfg or load_machine_config_for_ui(self.sn)
+        cfg = self.machine_cfg or load_machine_config_for_ui(self.sn, self.strategy_name)
         self._load_ctrl_values(self.ctrls, cfg)
 
         if self._uses_dual_config_pages():
@@ -173,7 +201,12 @@ class MachineConfigFrame(wx.Dialog):
             if self._uses_dual_config_pages():
                 values["flat"] = self._collect_values(self.flat_ctrls)
 
-            save_machine_config_from_ui(self.sn, values, self.control_queue)
+            save_machine_config_from_ui(
+                self.sn,
+                values,
+                self.control_queue,
+                strategy_name=self.strategy_name,
+            )
             wx.MessageBox("参数已保存并生效", "成功", wx.OK | wx.ICON_INFORMATION)
             self.EndModal(wx.ID_OK)
         except Exception as e:

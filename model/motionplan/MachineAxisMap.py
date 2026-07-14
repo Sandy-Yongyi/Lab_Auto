@@ -1,7 +1,7 @@
 """
 设备轴索引映射配置模块。
 
-根据 MachineConfig.toml 的 type 和 install_orietation，查找 PLC AxisList
+根据当前策略对应 MachineConfig1/2/3.toml 的 type 和 install_orietation，查找 PLC AxisList
 中对应的轴索引。当前 Lab_Auto 第一阶段设备顺序：
 
     sn=0 out_fx left     : 0~9   (z, y, x1~x8)
@@ -10,6 +10,8 @@
 """
 
 from model.utils.LoggerUtil import logger
+from model.motionplan.motionutil.AxisLimits import clamp_speed, clamp_to_limit_yx
+from model.plc.MovingFrameData import AxisData
 
 
 AXIS_LIMIT_KEY: dict[str, dict[str, int]] = {
@@ -132,17 +134,32 @@ def get_all_axis_indices(machine_type: str, orientation: str) -> list:
     return list(get_axis_map(machine_type, orientation).values())
 
 
-def apply_to_axis_list(machine_data: dict, machine_type: str, orientation: str, axis_list: list):
+def _limit_axis_command(machine_cfg: dict, axis_name: str, axis_data: AxisData) -> AxisData:
+    """在写入 PLC 报文前统一限制单轴位置和速度。"""
+    min_position, max_position = get_axis_position_limits(machine_cfg, axis_name)
+    if min_position > max_position:
+        raise ValueError(f"轴 {axis_name} 的位置限位无效: {min_position} > {max_position}")
+    max_speed = get_axis_speed_limit(machine_cfg, axis_name)
+    return AxisData(
+        Pos=clamp_to_limit_yx(int(axis_data.Pos), min_position, max_position),
+        Speed=clamp_speed(int(axis_data.Speed), max_speed),
+        Status=int(axis_data.Status),
+    )
+
+
+def apply_to_axis_list(machine_data: dict, machine_cfg: dict, axis_list: list):
     """将设备运动指令字典应用到 PLC AxisList 中。"""
+    machine_type = machine_cfg.get("type", "")
+    orientation = machine_cfg.get("install_orietation", "left")
     axis_map = get_axis_map(machine_type, orientation)
     for axis_name, axis_data in machine_data.items():
         if axis_name in axis_map:
             idx = axis_map[axis_name]
-            axis_list[idx] = axis_data
+            axis_list[idx] = _limit_axis_command(machine_cfg, axis_name, axis_data)
         elif axis_name == "y":
             for mapped_axis, idx in axis_map.items():
                 if mapped_axis.startswith("y"):
-                    axis_list[idx] = axis_data
+                    axis_list[idx] = _limit_axis_command(machine_cfg, mapped_axis, axis_data)
 
 
 def apply_device_axes_to_list(machine_config: dict, sn: int, axis_cmds: dict, axis_list: list):
@@ -151,10 +168,7 @@ def apply_device_axes_to_list(machine_config: dict, sn: int, axis_cmds: dict, ax
     if not machine_cfg:
         return
 
-    machine_type = machine_cfg.get("type", "")
-    orientation = machine_cfg.get("install_orietation", "left")
-
     try:
-        apply_to_axis_list(axis_cmds, machine_type, orientation, axis_list)
+        apply_to_axis_list(axis_cmds, machine_cfg, axis_list)
     except Exception as e:
         logger.error(f"将 SN[{sn}] 的轴数据应用到 AxisList 时出错: {e}")

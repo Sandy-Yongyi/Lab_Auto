@@ -2,6 +2,7 @@ from copy import deepcopy
 import os
 from typing import Optional
 from model.utils.TomlLoader import TomlLoader
+from model.utils.MachineConfigUtil import get_machine_config_path
 from model.formats.complete_workpiece.BlockDataFormat import BlockData, SingleMachineData
 from model.dataprocess.complete_workpiece.gun_distributors.BaseGunDistributor import BaseGunDistributor
 from model.dataprocess.complete_workpiece.gun_distributors.DefaultGunDistributor import DefaultGunDistributor
@@ -21,7 +22,11 @@ class GunDistributor:
     NO_DISTRIBUTE_MACHINE_TYPES = {"out_lift", "out_rotate", "in_rotate", "out_fx", "in_lift"}
 
     def __init__(self, machine_cfg=None):
-        self.machine_cfg = machine_cfg or TomlLoader.load(os.getcwd() + "\\model\\tomls\\MachineConfig.toml")
+        machine_config_path = get_machine_config_path(
+            os.path.join(os.getcwd(), "model", "tomls"),
+            "complete_workpiece",
+        )
+        self.machine_cfg = machine_cfg or TomlLoader.load(machine_config_path)
         self.spray_cfg = TomlLoader.load(os.getcwd() + "\\model\\tomls\\SprayConfig.toml")
         self.process_cfg = TomlLoader.load(os.getcwd() + "\\model\\tomls\\ProcessConfig.toml")
         self.base_distributor = BaseGunDistributor()

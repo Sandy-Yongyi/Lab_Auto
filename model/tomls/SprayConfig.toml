@@ -90,6 +90,12 @@ side_reciprocate_mode = "2d"
 # 侧面二维往复计次轴,"x"或"y"; 选 y 时按 y_min -> y_max -> y_min 计一次往复
 side_2d_cycle_axis = "y"
 
+# Z窗口边界连续多少帧有数据时判定工件开始或结束
+stage_detect_frame_count = 5
+
+# 按帧X轴计算模式,0为静态全局范围,1为动态逐枪插补
+frame_x_interpolation_enabled = 1
+
 # 侧面柜体是否进行背端面喷涂,1-进行,0-跳过中间 end_face 喷涂
 side_back_end_face_enabled = 0
 

@@ -1,24 +1,29 @@
 import os
 from model.utils.TomlLoader import TomlLoader
 from model.utils.LoggerUtil import logger
-from model.motionplan.MachineAxisMap import get_axis_speed_limit
+from model.utils.MachineConfigUtil import get_machine_config_path, validate_machine_params
+from model.motionplan.MachineAxisMap import get_axis_position_limits, get_axis_speed_limit
 
 
 def _load_range(cfg: dict, key: str, default_min: int, default_max: int):
     return cfg.get(f"{key}_min", default_min), cfg.get(f"{key}_max", default_max)
 
 
-def _get_param_range_rules(sn: int | None = None):
+def _get_param_range_rules(sn: int | None = None, strategy_name="frame_by_frame"):
     """加载参数范围。距离类来自 SprayConfig，速度类来自当前设备 max_limit_speed。"""
     spray_config_path = os.path.join(os.getcwd(), "model", "tomls", "SprayConfig.toml")
-    machine_cfg = load_machine_config_for_ui(sn) if sn is not None else {}
+    machine_cfg = load_machine_config_for_ui(sn, strategy_name) if sn is not None else {}
     x_speed_max = get_axis_speed_limit(machine_cfg, "x", 620) if machine_cfg else 620
     y_speed_max = get_axis_speed_limit(machine_cfg, "y", 590) if machine_cfg else 590
     z_speed_max = get_axis_speed_limit(machine_cfg, "z", 240) if machine_cfg else 240
+    y_pos_min, y_pos_max = get_axis_position_limits(machine_cfg, "y", 0, 430) if machine_cfg else (0, 430)
 
     try:
         spray_cfg = TomlLoader.load(spray_config_path)
         return {
+            "tracking": (0, 1),
+            "y_move_min": (y_pos_min, y_pos_max),
+            "y_move_max": (y_pos_min, y_pos_max),
             "out_front_x_offset": _load_range(spray_cfg, "out_front_x_offset", 0, 300),
             "out_after_x_offset": _load_range(spray_cfg, "out_after_x_offset", 0, 300),
             "in_front_x_offset": _load_range(spray_cfg, "in_front_x_offset", 0, 300),
@@ -47,6 +52,9 @@ def _get_param_range_rules(sn: int | None = None):
         # 如果加载失败，使用默认值
         logger.info(f"load SprayConfig.toml failed, use default param ranges: {e}")
         return {
+            "tracking": (0, 1),
+            "y_move_min": (y_pos_min, y_pos_max),
+            "y_move_max": (y_pos_min, y_pos_max),
             "out_front_x_offset": (0, 300),
             "out_after_x_offset": (0, 300),
             "in_front_x_offset": (0, 300),
@@ -73,8 +81,12 @@ def _get_param_range_rules(sn: int | None = None):
         }
 
 
-TOML_PATH = os.path.join(os.getcwd(), "model", "tomls", "MachineConfig.toml")
 FLAT_CONFIG_KEY = "flat"
+
+
+def _get_toml_path(strategy_name: str) -> str:
+    config_dir = os.path.join(os.getcwd(), "model", "tomls")
+    return get_machine_config_path(config_dir, strategy_name)
 
 
 def _normalize_origin_pos_for_ui(cfg: dict) -> dict:
@@ -108,49 +120,43 @@ def _normalize_ui_values_for_save(values: dict) -> dict:
     return normalized
 
 
-def load_machine_config_for_ui(sn: int) -> dict:
-    cfg = TomlLoader.load(TOML_PATH)
+def load_machine_config_for_ui(sn: int, strategy_name="frame_by_frame") -> dict:
+    cfg = TomlLoader.load(_get_toml_path(strategy_name))
     return _normalize_config_for_ui(cfg.get(str(sn), {}))
 
 
-def save_machine_config_from_ui(sn: int, values: dict, control_queue=None):
+def save_machine_config_from_ui(sn: int, values: dict, control_queue=None,
+                                strategy_name="frame_by_frame"):
     """保存机器配置并通知PLC进程"""
-    param_range_rules = _get_param_range_rules(sn)
+    param_range_rules = _get_param_range_rules(sn, strategy_name)
     _validate_params(values, param_range_rules)
     normalized_values = _normalize_ui_values_for_save(values)
-    _save_to_toml(sn, normalized_values)
+    toml_path = _get_toml_path(strategy_name)
+    _save_to_toml(sn, normalized_values, toml_path)
     if control_queue is not None:
-        _notify_plc(sn, normalized_values, control_queue)
+        _notify_plc(sn, normalized_values, control_queue, toml_path)
 
 
 def _validate_params(values: dict, param_range_rules: dict):
-    for k, v in values.items():
-        if k == FLAT_CONFIG_KEY and isinstance(v, dict):
-            _validate_params(v, param_range_rules)
-            continue
-        if k not in param_range_rules:
-            continue
-        min_v, max_v = param_range_rules[k]
-        if not (min_v <= v <= max_v):
-            raise ValueError(f"{k} 超出范围 {min_v} ~ {max_v}")
+    validate_machine_params(values, param_range_rules)
 
 
-def _save_to_toml(sn: int, values: dict):
-    cfg = TomlLoader.load(TOML_PATH)
+def _save_to_toml(sn: int, values: dict, toml_path: str):
+    cfg = TomlLoader.load(toml_path)
     sn_key = str(sn)
     if sn_key not in cfg:
-        raise RuntimeError(f"machineconfig.toml 中不存在 SN[{sn}] 配置")
+        raise RuntimeError(f"{os.path.basename(toml_path)} 中不存在 SN[{sn}] 配置")
     existing_config = cfg.get(sn_key, {})
     merged_config = {**existing_config, **values}
     # 更新配置
     cfg[sn_key] = merged_config
-    TomlLoader.save(cfg, TOML_PATH)
+    TomlLoader.save(cfg, toml_path)
 
 
-def _notify_plc(sn: int, values: dict, control_queue):
+def _notify_plc(sn: int, values: dict, control_queue, toml_path: str):
     """通知PLC进程配置已更新"""
     try:
-        cfg = TomlLoader.load(TOML_PATH)
+        cfg = TomlLoader.load(toml_path)
         sn_key = str(sn)
         if sn_key in cfg:
             full_config = cfg[sn_key].copy()

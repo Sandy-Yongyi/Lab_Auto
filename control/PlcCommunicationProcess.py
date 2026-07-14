@@ -15,6 +15,7 @@ from model.formats.frame_by_frame.AxisFrameDataFormat import AxisFrameData
 from model.dataprocess.complete_workpiece.GunDistributor import GunDistributor
 from model.motionplan.MotionFrameByFramePlanning import MotionFrameByFramePlanning
 from model.utils.StrategyUtil import is_complete_workpiece_mode, validate_strategy_name
+from model.utils.MachineConfigUtil import get_machine_config_path
 from model.motionplan.MotionCompleteWorkpiecePlanning import MotionCompleteWorkpiecePlanning
 
 
@@ -41,7 +42,7 @@ class PlcCommunicationProcess(multiprocessing.Process):
         self.config_dir = os.path.join(os.getcwd(), "model", "tomls")
         self.plc_config_path = os.path.join(self.config_dir, "PlcConfig.toml")
         self.read_data_config_path = os.path.join(self.config_dir, "ReadDataConfig.toml")
-        self.machine_config_path = os.path.join(self.config_dir, "MachineConfig.toml")
+        self.machine_config_path = get_machine_config_path(self.config_dir, self.strategy_name)
         self.spray_config_path = os.path.join(self.config_dir, "SprayConfig.toml")
         self.system_config_path = os.path.join(self.config_dir, "SystemConfig.toml")
         self.mode_config_path = os.path.join(self.config_dir, "ModeConfig.toml")
@@ -81,6 +82,7 @@ class PlcCommunicationProcess(multiprocessing.Process):
         # 运行时设备参数
         self.runtime_machine_config = {}
         self.runtime_param_keys = {
+            "tracking", "y_move_min", "y_move_max",
             "x_pos_speed", "x_recip_speed", "y_pos_speed", "y_recip_speed", "z_zeroing_speed",
             "x_status_offset",
             "outside_total_cycles", "inside_total_cycles",

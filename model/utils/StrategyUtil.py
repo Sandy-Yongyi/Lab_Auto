@@ -8,6 +8,21 @@ SUPPORTED_STRATEGIES = {
     FRAME_QUEUE_STRATEGY,
     CONTINUOUS_BIDIRECTIONAL_STRATEGY,
 }
+STRATEGY_CODE_MAP = {
+    1: FRAME_QUEUE_STRATEGY,
+    2: COMPLETE_WORKPIECE_STRATEGY,
+    3: CONTINUOUS_BIDIRECTIONAL_STRATEGY,
+}
+
+
+def strategy_name_from_code(value: object) -> str:
+    """把 ModeConfig.toml 的整数策略映射为内部策略名称。"""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"strategy_name 必须是整数 1/2/3，当前值: {value!r}")
+    try:
+        return STRATEGY_CODE_MAP[value]
+    except KeyError as exc:
+        raise ValueError(f"strategy_name 只支持 1/2/3，当前值: {value}") from exc
 
 
 def validate_strategy_name(strategy_name: str) -> str:
