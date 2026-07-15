@@ -35,6 +35,7 @@ class DataProcessWorker(multiprocessing.Process):
         self.read_data_config = TomlLoader.load(f"{self.config_dir}\\ReadDataConfig.toml")
         self.system_config = TomlLoader.load(f"{self.config_dir}\\SystemConfig.toml")
         self.draw_type = int(self.read_data_config.get("draw_type", 1))
+        self.translate_data_origin = int(self.read_data_config.get("translate_data_origin", 1) or 1)
         self.directions = tuple(get_active_directions(self.system_config))
         # 存储所有帧数据
         self.all_frames = {}
@@ -74,41 +75,162 @@ class DataProcessWorker(multiprocessing.Process):
         logger.warning(f"Unsupported debug strategy: {self.strategy_name}")
 
     def _load_all_frames(self):
-        """加载 frame_by_frame 调试所需的全部点云与分帧数据"""
-        if not self.data_name:
-            logger.warning("data_name is empty, skip frame_by_frame debug loading")
+        """按原点配置加载 frame_by_frame 调试点云并保持 Z 空帧。"""
+        datasets = self._discover_point_cloud_datasets()
+        if not datasets:
+            logger.warning(f"No debug point cloud dataset found in: {self.data_paths}")
             return
 
-        combined_path = os.path.join(self.data_paths, f"combined_{self.data_name}")
-        all_xyz_data = self._safe_load_points(combined_path)
-        viz_data = {
-            'points': transform_points_for_origin(all_xyz_data[:, :3], self.read_data_config),
-            'boxes': None
-        }
-        self.viz_queue.put(viz_data, block=False)
-        logger.info(f"Loaded combined point cloud for visualization: {combined_path}, points={all_xyz_data.shape[0]}")
+        dataset = datasets[0]
+        if len(datasets) > 1:
+            logger.info(
+                f"frame_by_frame debug selected first dataset '{dataset['name']}' "
+                f"from {len(datasets)} available datasets"
+            )
+        points_by_source = self._load_dataset_points(dataset)
 
-        for direction in self.directions:
-            path = os.path.join(self.data_paths, f"{direction}_{self.data_name}")
-            self.all_frames[direction] = self._load_direction_frames(path)
-            self.max_frame_index = max(self.max_frame_index, len(self.all_frames[direction]) - 1)
+        if self._uses_same_origin():
+            combined_points = points_by_source.get("combined", self._empty_points())
+            combined_frames = self._split_points_into_frames(combined_points)
+            for direction in self.directions:
+                self.all_frames[direction] = list(combined_frames)
+            visualization_points = combined_points
+        else:
+            visualization_arrays = []
+            for direction in self.directions:
+                direction_points = points_by_source.get(direction, self._empty_points())
+                self.all_frames[direction] = self._split_points_into_frames(direction_points)
+                if direction_points.size > 0:
+                    visualization_arrays.append(direction_points)
+            visualization_points = (
+                np.vstack(visualization_arrays)
+                if visualization_arrays
+                else self._empty_points()
+            )
 
+        if visualization_points.size > 0:
+            self._push_visualization_data(visualization_points)
+
+        frame_counts = [len(self.all_frames.get(direction, [])) for direction in self.directions]
+        self.max_frame_index = max(frame_counts, default=0) - 1
         logger.info(
-            "Loaded frame counts: "
-            + ", ".join(f"{direction}={len(self.all_frames[direction])}" for direction in self.directions)
+            f"Loaded debug dataset '{dataset['name']}', translate_data_origin={self.translate_data_origin}: "
+            + ", ".join(
+                f"{direction}={len(self.all_frames.get(direction, []))}"
+                for direction in self.directions
+            )
             + f". Max frame index: {self.max_frame_index}"
         )
+
+    def _uses_same_origin(self):
+        return int(
+            getattr(
+                self,
+                "translate_data_origin",
+                self.read_data_config.get("translate_data_origin", 1),
+            )
+            or 1
+        ) == 1
+
+    def _get_point_cloud_sources(self):
+        if self._uses_same_origin():
+            return ("combined",)
+        return tuple(self.directions)
+
+    def _normalize_dataset_name(self, data_name):
+        name = os.path.basename(str(data_name or "").strip())
+        if not name:
+            return ""
+
+        source_names = ("combined",) + tuple(
+            sorted(self.DIRECTIONS, key=len, reverse=True)
+        )
+        lower_name = name.lower()
+        for source in source_names:
+            prefix = f"{source}_"
+            if lower_name.startswith(prefix.lower()):
+                return name[len(prefix):]
+        return name
+
+    def _discover_point_cloud_datasets(self):
+        """按共同文件后缀把 combined/各方向点云组织成统一数据集。"""
+        if not os.path.isdir(self.data_paths):
+            logger.warning(f"Debug point cloud directory not found: {self.data_paths}")
+            return []
+
+        file_names = [
+            file_name
+            for file_name in os.listdir(self.data_paths)
+            if os.path.isfile(os.path.join(self.data_paths, file_name))
+        ]
+        file_lookup = {file_name.lower(): file_name for file_name in file_names}
+        sources = self._get_point_cloud_sources()
+
+        if self.data_name:
+            dataset_names = [self._normalize_dataset_name(self.data_name)]
+        else:
+            dataset_names = set()
+            for file_name in file_names:
+                lower_file_name = file_name.lower()
+                if not lower_file_name.endswith(".txt"):
+                    continue
+                for source in sorted(sources, key=len, reverse=True):
+                    prefix = f"{source}_"
+                    if lower_file_name.startswith(prefix.lower()):
+                        dataset_names.add(file_name[len(prefix):])
+                        break
+            dataset_names = sorted(dataset_names)
+
+        datasets = []
+        for dataset_name in dataset_names:
+            if not dataset_name:
+                continue
+            paths = {}
+            for source in sources:
+                candidates = [f"{source}_{dataset_name}"]
+                if not str(dataset_name).lower().endswith(".txt"):
+                    candidates.append(f"{source}_{dataset_name}.txt")
+                for candidate in candidates:
+                    actual_name = file_lookup.get(candidate.lower())
+                    if actual_name:
+                        paths[source] = os.path.join(self.data_paths, actual_name)
+                        break
+            if paths:
+                datasets.append({"name": dataset_name, "paths": paths})
+
+        return datasets
+
+    def _load_dataset_points(self, dataset):
+        points_by_source = {}
+        for source in self._get_point_cloud_sources():
+            path = dataset["paths"].get(source)
+            if not path:
+                logger.warning(
+                    f"Dataset '{dataset['name']}' has no {source}_ point cloud file"
+                )
+                points_by_source[source] = self._empty_points()
+                continue
+            points_by_source[source] = self._safe_load_points(path)
+            logger.info(
+                f"Loaded debug point cloud: source={source}, path={path}, "
+                f"points={points_by_source[source].shape[0]}"
+            )
+        return points_by_source
 
     def _safe_load_points(self, path):
         """安全加载点云文件，缺失时返回空点云。"""
         if not os.path.exists(path):
             logger.warning(f"Point cloud file not found: {path}")
-            return np.empty((0, 3), dtype=float)
+            return self._empty_points()
 
-        data = np.loadtxt(path)
+        try:
+            data = np.loadtxt(path)
+        except (OSError, ValueError) as e:
+            logger.warning(f"Failed to load point cloud file '{path}': {e}")
+            return self._empty_points()
         data = np.asarray(data, dtype=float)
         if data.size == 0:
-            return np.empty((0, 3), dtype=float)
+            return self._empty_points()
         if data.ndim == 1:
             data = data.reshape(1, -1)
         if data.shape[1] < 3:
@@ -121,22 +243,45 @@ class DataProcessWorker(multiprocessing.Process):
         """按 Z 轴分帧加载单个方向点云。"""
         data = self._safe_load_points(path)
         logger.info(f"Loading data from: {path}, points={data.shape[0]}")
+        return self._split_points_into_frames(data)
 
+    def _split_points_into_frames(self, data):
+        """按 Z 间隔分帧，缺失的 Z 区间保留为空帧。"""
+        data = np.asarray(data, dtype=float)
         if data.size == 0:
             return []
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+        if data.shape[1] < 3:
+            return []
 
-        z_threshold = int(self.process_config.get("z_threshold", 10))
-        y_threshold = int(self.process_config.get("y_threshold", 10))
-        z_groups = self.data_split.AxisSorting_zyx(data[:, :3], z_threshold, y_threshold)
+        z_threshold = int(
+            self.read_data_config.get(
+                "z_threshold",
+                self.process_config.get("z_threshold", 10),
+            )
+            or 0
+        )
+        if z_threshold <= 0:
+            raise ValueError(f"z_threshold must be greater than 0, current value: {z_threshold}")
 
-        merged_z_groups = []
-        for z_layer in z_groups:
-            if z_layer:
-                merged_points = np.vstack(z_layer) if len(z_layer) > 1 else z_layer[0]
-                merged_z_groups.append(merged_points)
-            else:
-                merged_z_groups.append(np.empty((0, 3), dtype=float))
-        return merged_z_groups
+        points = data[:, :3]
+        relative_z = points[:, 2] - np.min(points[:, 2])
+        z_bins = np.floor(relative_z / z_threshold).astype(int)
+        max_z_bin = int(np.max(z_bins))
+        frames = []
+        for z_bin in range(max_z_bin + 1):
+            frame_points = points[z_bins == z_bin]
+            if frame_points.size == 0:
+                frames.append(self._empty_points())
+                continue
+            sort_order = np.lexsort((frame_points[:, 0], frame_points[:, 1]))
+            frames.append(frame_points[sort_order])
+        return frames
+
+    @staticmethod
+    def _empty_points():
+        return np.empty((0, 3), dtype=float)
 
     def _process_frames(self):
         """处理所有帧数据，每收到一个脉冲处理一帧"""
@@ -154,19 +299,28 @@ class DataProcessWorker(multiprocessing.Process):
                     continue
 
                 # 检查 fifo 是否前进，支持 chaincountcm 随 pulse 回绕后的 max -> 0
-                repeat_count = self._get_fifo_step_delta(last_fifo, current_fifo)
-                if repeat_count > 0:
+                sent_count = self._process_fifo_advance(last_fifo, current_fifo)
+                if sent_count > 0:
                     last_fifo = current_fifo
-
-                    # 无论是否还有真实数据，只要 FIFO 前进都发送 1 个包；跳变多少帧由 repeat_count 表示
-                    self._process_current_frame(real_fifo_key=current_fifo, repeat_count=repeat_count)
-                    self.current_frame_index += repeat_count
                     if self.current_frame_index > self.max_frame_index:
                         logger.info("All frames processed. Continue sending zero frames while FIFO increments...")
 
             except Exception as e:
                 logger.error(f"Error in frame processing: {str(e)}")
                 time.sleep(1)
+
+    def _process_fifo_advance(self, last_fifo, current_fifo):
+        """FIFO 每前进一格发送下一帧；FIFO 不变或倒退时不发送。"""
+        step_count = self._get_fifo_step_delta(last_fifo, current_fifo)
+        if step_count <= 0:
+            return 0
+
+        ring_size = self.max_fifo + 1
+        for step in range(1, step_count + 1):
+            frame_fifo = (int(last_fifo) + step) % ring_size
+            self._process_current_frame(real_fifo_key=frame_fifo, repeat_count=1)
+            self.current_frame_index += 1
+        return step_count
 
     def _get_fifo_step_delta(self, last_fifo, current_fifo):
         """计算 FIFO 前进了多少步，支持 max_fifo -> 0 的正常回绕。"""
@@ -207,10 +361,11 @@ class DataProcessWorker(multiprocessing.Process):
         # 取出当前帧四个方向点云（xyz）
         direction_data = {}
         for direction in self.directions:
-            if self.current_frame_index < len(self.all_frames[direction]):
-                direction_data[direction] = self.all_frames[direction][self.current_frame_index]
+            direction_frames = self.all_frames.get(direction, [])
+            if self.current_frame_index < len(direction_frames):
+                direction_data[direction] = direction_frames[self.current_frame_index]
             else:
-                direction_data[direction] = np.empty((0, 3), dtype=float)
+                direction_data[direction] = self._empty_points()
 
         logger.info(f"Accumulating frame {self.current_frame_index}...")
 
@@ -223,8 +378,10 @@ class DataProcessWorker(multiprocessing.Process):
             "repeat_count": int(repeat_count),
             "lidar_status": int(getattr(self, "lidar_status", 0) or 0),
         }
+        frame_config = dict(self.process_config)
+        frame_config.update(self.read_data_config)
         for direction in self.directions:
-            frame_packet[direction] = build_side_frame(self.accum, direction, self.process_config)
+            frame_packet[direction] = build_side_frame(self.accum, direction, frame_config)
 
         # 清除累积器（开启下一轮）
         self.accum = {direction: [] for direction in self.directions}
@@ -238,36 +395,60 @@ class DataProcessWorker(multiprocessing.Process):
         )
 
     def _process_complete_workpieces(self):
-        """完整工件调试：遍历文件夹中的 combined_ 点云，模拟采数进程发送原始数据。"""
-        combined_files = sorted(
-            file_name for file_name in os.listdir(self.data_paths)
-            if file_name.startswith("combined_") and file_name.lower().endswith(".txt")
-        )
-
-        if not combined_files:
-            logger.warning(f"No combined_ files found in directory: {self.data_paths}")
+        """完整工件调试：按原点模式模拟实时采数进程发送原始数据。"""
+        datasets = self._discover_point_cloud_datasets()
+        if not datasets:
+            logger.warning(f"No complete workpiece debug dataset found in: {self.data_paths}")
             return
 
-        for file_name in combined_files:
-            file_path = os.path.join(self.data_paths, file_name)
-            points = self._safe_load_points(file_path)
-            if points.size == 0:
-                logger.warning(f"Empty combined_ point cloud skipped: {file_path}")
+        for dataset in datasets:
+            points_by_source = self._load_dataset_points(dataset)
+            raw_data, visualization_points = self._build_complete_raw_data(
+                points_by_source
+            )
+            if raw_data is None:
+                logger.warning(
+                    f"Empty complete workpiece dataset skipped: {dataset['name']}"
+                )
                 continue
 
-            raw_data = {
-                "lidar_status": 0,
-                "translate_data_origin": 1,
-                "all_data": points[:, :3],
-                "all_stop_pulse": 0,
-            }
             self.machine_data_queue.put(raw_data)
-            logger.info(f"Sent complete workpiece raw data: {file_name}, points={points.shape[0]}")
+            logger.info(
+                f"Sent complete workpiece debug data: dataset={dataset['name']}, "
+                f"translate_data_origin={raw_data['translate_data_origin']}"
+            )
 
-            if self.draw_type != 2:
-                self._push_visualization_data(points[:, :3])
+            if self.draw_type != 2 and visualization_points.size > 0:
+                self._push_visualization_data(visualization_points)
 
-            time.sleep(15000000)  # TODO 增加等待时间
+    def _build_complete_raw_data(self, points_by_source):
+        raw_data = {
+            "lidar_status": int(getattr(self, "lidar_status", 0) or 0),
+            "translate_data_origin": 1 if self._uses_same_origin() else 2,
+        }
+
+        if self._uses_same_origin():
+            points = points_by_source.get("combined", self._empty_points())
+            if points.size == 0:
+                return None, self._empty_points()
+            raw_data["all_data"] = points[:, :3]
+            raw_data["all_stop_pulse"] = 0
+            for direction in self.directions:
+                raw_data[f"{direction}_stop_pulse"] = 0
+            return raw_data, points[:, :3]
+
+        visualization_arrays = []
+        for direction in self.directions:
+            points = points_by_source.get(direction, self._empty_points())
+            if points.size == 0:
+                continue
+            raw_data[f"{direction}_data"] = points[:, :3]
+            raw_data[f"{direction}_stop_pulse"] = 0
+            visualization_arrays.append(points[:, :3])
+
+        if not visualization_arrays:
+            return None, self._empty_points()
+        return raw_data, np.vstack(visualization_arrays)
 
     def _push_visualization_data(self, points):
         points_array = np.asarray(points, dtype=float)
