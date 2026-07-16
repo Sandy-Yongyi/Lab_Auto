@@ -244,7 +244,7 @@ class PointCloudCanvas(glcanvas.GLCanvas):
                         getattr(subinside, 'subinside_z_min', 0), getattr(subinside, 'subinside_z_max', 0)
                     )
                     self.box_lines.append(lines)
-                    self.box_colors.append([0.0, 1.0, 0.0])
+                    self.box_colors.append([0.0, 0.0, 0.0])
 
             self._request_refresh()
             return
@@ -281,7 +281,7 @@ class PointCloudCanvas(glcanvas.GLCanvas):
                             getattr(subinside, 'subinside_z_min', 0), getattr(subinside, 'subinside_z_max', 0)
                         )
                         self.box_lines.append(lines)
-                        self.box_colors.append([0.0, 1.0, 0.0])
+                        self.box_colors.append([0.0, 0.0, 0.0])
 
         self._request_refresh()
 

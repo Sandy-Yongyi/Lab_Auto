@@ -403,7 +403,7 @@ class DataProcessWorker(multiprocessing.Process):
 
         for dataset in datasets:
             points_by_source = self._load_dataset_points(dataset)
-            raw_data, visualization_points = self._build_complete_raw_data(
+            raw_data, _ = self._build_complete_raw_data(
                 points_by_source
             )
             if raw_data is None:
@@ -418,8 +418,22 @@ class DataProcessWorker(multiprocessing.Process):
                 f"translate_data_origin={raw_data['translate_data_origin']}"
             )
 
-            if self.draw_type != 2 and visualization_points.size > 0:
-                self._push_visualization_data(visualization_points)
+            if self.draw_type != 2:
+                visualization_sources = (
+                    ("combined",)
+                    if self._uses_same_origin()
+                    else self.directions
+                )
+                for source in visualization_sources:
+                    visualization_points = points_by_source.get(
+                        source,
+                        self._empty_points(),
+                    )
+                    if visualization_points.size == 0:
+                        continue
+                    self._push_visualization_data(visualization_points)
+                    time.sleep(30)
+        time.sleep(10000000)  # TODO: 调试模式下避免进程结束
 
     def _build_complete_raw_data(self, points_by_source):
         raw_data = {
@@ -457,8 +471,15 @@ class DataProcessWorker(multiprocessing.Process):
         if points_array.shape[1] < 3:
             return
 
+        visualization_points = points_array[:, :3]
+        if self._uses_same_origin():
+            visualization_points = transform_points_for_origin(
+                visualization_points,
+                self.read_data_config,
+            )
+
         viz_data = {
-            "points": transform_points_for_origin(points_array[:, :3], self.read_data_config),
+            "points": visualization_points,
             "boxes": None,
         }
         try:

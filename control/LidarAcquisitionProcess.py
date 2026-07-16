@@ -666,7 +666,12 @@ class LidarAcquisitionProcess(multiprocessing.Process):
             logger.info(f"Saving combined data to {filename}")
 
         if not (is_complete_workpiece_mode(self.strategy_name) and self.draw_type == 2):
-            viz_points = transform_points_for_origin(self.all_xyz_data[:, :3], self.read_data_config) if self.all_xyz_data.size > 0 else np.empty((0, 3))
+            viz_points = self.all_xyz_data[:, :3] if self.all_xyz_data.size > 0 else np.empty((0, 3))
+            if int(self.read_data_config.get("translate_data_origin", 1) or 1) == 1:
+                viz_points = transform_points_for_origin(
+                    viz_points,
+                    self.read_data_config,
+                )
             viz_data = {"points": viz_points, "boxes": None}
             try:
                 self.viz_queue.put(viz_data, block=False)

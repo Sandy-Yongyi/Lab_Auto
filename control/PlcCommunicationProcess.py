@@ -97,7 +97,7 @@ class PlcCommunicationProcess(multiprocessing.Process):
         self.num_devices = 0
 
         # 模拟模式相关
-        self.simulation_mode = False  # 启用模拟模式
+        self.simulation_mode = True  # 启用模拟模式
         self.last_simulation_time = 0  # 记录上次模拟处理时间
 
         # 设备运动状态跟踪

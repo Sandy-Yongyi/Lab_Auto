@@ -5,18 +5,19 @@ class DataPartitionAuto:
     '''
     自动化分区处理模块
     '''
-    def find_boundary_layers_auto(self, y_groups, upper_y, lower_y, x_middle, last_surface_edge, outside_x_max, outside_x_min):
+    def find_boundary_layers_auto(self, y_groups, upper_y, lower_y, x_threshold, last_surface_edge, outside_x_max, outside_x_min, inside_partition_min_y_range=50):
         """
         自动进行分区检测:
-        循环遍历每一组y_groups，当所有组的layer中所有x点的最小值小于x_middle则只返回当前layer的x_max和x_min，merge_partitions=[]
-        如果当这一组的y_groups，循环layer直到最小x大于x_middle的时候则从当前的组为开始，记录start_y = np.min(layer[:, 1])和x_max=np.min(layer[:, 0]),
+        循环遍历每一组y_groups，当所有组的layer中所有x点的最小值小于x_threshold则只返回当前layer的x_max和x_min，merge_partitions=[]
+        如果当这一组的y_groups，循环layer直到最小x大于x_threshold的时候则从当前的组为开始，记录start_y = np.min(layer[:, 1])和x_max=np.min(layer[:, 0]),
         有了开始，还没有结束的过程中刷新x_max=min(x_max,np.min(layer[:, 0]))
-        开始后直到找到最小x小于x_middle的时候则为结束，记录end_y = np.max(layer[:, 1])和刷新x_max=min(x_max,np.min(layer[:, 0]))
+        开始后直到找到最小x小于x_threshold的时候则为结束，记录end_y = np.max(layer[:, 1])和刷新x_max=min(x_max,np.min(layer[:, 0]))
         判断该开始到结束的分区start_y-end_y是否大于100，是则merge_partitions.append，否则舍弃
         最后返回return (x_max, x_min, None, merge_partitions)
         """
         reversed_y_groups = list(reversed(y_groups))  # 创建逆序数组副本
-        self.x_middle = x_middle
+        self.x_threshold = x_threshold
+        self.inside_partition_min_y_range = inside_partition_min_y_range
         x_max = 0.0
         x_min = float('inf')
         merge_partitions = []
@@ -47,7 +48,7 @@ class DataPartitionAuto:
             if current_max_y > upper_y or current_min_y < lower_y:
                 continue
 
-            if current_min_x >= x_middle:
+            if current_min_x >= x_threshold:
                 if current_partition is None:
                     current_partition = self._create_partition(
                         start_index=i,
@@ -96,7 +97,7 @@ class DataPartitionAuto:
                             is_no_back=True,
                         )
 
-            if current_min_x < x_middle and current_min_y - next_max_y <= 200:
+            if current_min_x < x_threshold and current_min_y - next_max_y <= 200:
                 if current_partition is not None:
                     current_partition["end_index"] = i
                     merge_partitions = self._finalize_current_partition(x_min, current_partition, merge_partitions, reversed_y_groups)
@@ -163,7 +164,7 @@ class DataPartitionAuto:
             return merge_partitions
         if end_index - start_index < 4:  # 为背板镂空情况
             partition_height = current_partition["start_y"] - current_partition["end_y"]
-            if partition_height > 150:
+            if partition_height > self.inside_partition_min_y_range:
                 merge_partitions.append({
                     "merge_partition_id": len(merge_partitions),
                     "merge_partition_x_min": x_min,
@@ -190,7 +191,7 @@ class DataPartitionAuto:
 
             # 计算调整后的分区高度
             partition_height = adjusted_start_y - adjusted_end_y
-            if partition_height > 150:
+            if partition_height > self.inside_partition_min_y_range:
                 merge_partitions.append({
                     "merge_partition_id": len(merge_partitions),
                     "merge_partition_x_min": x_min,

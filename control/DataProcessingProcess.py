@@ -96,6 +96,7 @@ class DataProcessingProcess(multiprocessing.Process):
                 if isinstance(block_data, BlockData):
                     self._push_visualization_data(data, block_data)
                     result[direction] = {"stop_pulse": stop_pulse, "data": block_data}
+                    time.sleep(30)  # TODO：调试模式下看数据
 
         # 发送处理结果
         self.machine_data_queue.put(result)
@@ -131,7 +132,12 @@ class DataProcessingProcess(multiprocessing.Process):
         if points_array.shape[1] < 3:
             return
 
-        display_points = transform_points_for_origin(points_array[:, :3], self.read_data_config)
+        display_points = points_array[:, :3]
+        if int(self.read_data_config.get("translate_data_origin", 1) or 1) == 1:
+            display_points = transform_points_for_origin(
+                display_points,
+                self.read_data_config,
+            )
 
         viz_data = {
             "points": display_points,

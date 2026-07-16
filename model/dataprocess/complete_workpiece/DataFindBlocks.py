@@ -119,6 +119,7 @@ class DataFindBlocks:
         self.x_max = np.max(self.filtered_data[:, 0])
         self.x_min = np.min(self.filtered_data[:, 0])
         self.x_middle = (self.x_max + self.x_min) / 2
+        self.auto_partition_x_threshold = self._resolve_auto_partition_x_threshold()
 
         y_max_temp = np.max(self.filtered_data[:, 1])
         y_min_temp = np.min(self.filtered_data[:, 1])
@@ -152,6 +153,22 @@ class DataFindBlocks:
                 logger.info(f"no find upper plane Y, lower plane Y, y_max is: {y_max}, y_min is: {y_min}")
 
         return y_max, y_min, work_type
+
+    def _resolve_auto_partition_x_threshold(self):
+        use_middle = int(self.process_config.get("inside_x_use_middle", 1))
+        if use_middle not in (0, 1):
+            raise ValueError("inside_x_use_middle must be 0 or 1")
+        if use_middle == 1:
+            return self.x_middle
+
+        offset = float(self.process_config.get("inside_x_min_offset", 100))
+        if offset < 0:
+            raise ValueError("inside_x_min_offset must be greater than or equal to 0")
+
+        threshold = self.x_min + offset
+        if threshold > self.x_max:
+            raise ValueError("inside_x_min_offset exceeds the workpiece X range")
+        return threshold
 
     def process_z_group(self, y_max, y_min, z_group, work_type):
         """
@@ -244,7 +261,7 @@ class DataFindBlocks:
         else:
             # 自动化查找分区数据
             result = self.data_partition_auto.find_boundary_layers_auto(
-                frame_data, y_max, y_min, self.x_middle, last_surface_edge, x_max, x_min
+                frame_data, y_max, y_min, self.auto_partition_x_threshold, last_surface_edge, x_max, x_min
             )
         return result
 
@@ -565,7 +582,8 @@ class DataFindBlocks:
                 if (abs(current_y_max - info["y_max"]) <= self.process_config["y_partition_threshold"] and
                         abs(current_y_min - info["y_min"]) <= self.process_config["y_partition_threshold"]):
                     # 检查帧间隔是否 ≤10
-                    if (data_idx - info["data_idx"]) <= self.process_config["z_partition_threshold"] / 10:
+                    if (data_idx - info["data_idx"]) <= self.process_config["z_partition_threshold"] / 10 or\
+                            (info["y_max"] - info["y_min"]) <= self.process_config["y_partition_threshold"]:
                         # 仅修改这两个part的标志位
                         info["part"].merge_partition_surface_edge = 0
                         part.merge_partition_surface_edge = 0
