@@ -45,6 +45,8 @@ class DeviceFrameMotionState:
     interpolation_targets: dict[str, int] = field(default_factory=dict)
     interpolation_speeds: dict[str, int] = field(default_factory=dict)
     interpolation_base_x: dict[str, int] = field(default_factory=dict)
+    tracking_x_pre_target: int | None = None
+    tracking_start_seen: bool = False
 
 
 class MotionOutFxFramePlanning:
@@ -88,9 +90,34 @@ class MotionOutFxFramePlanning:
         frames = self.frame_helper.get_side_frames(machine_cfg, frame_queue_manager)
         chain_running = self._is_chain_running(plc_data)
 
+        if state.stage in {"start_retract", "end_retract"}:
+            axis_cmds, x_ready = self._build_tracking_retract_commands(
+                machine_cfg,
+                runtime_cfg,
+                plc_data,
+                state,
+            )
+            if x_ready:
+                next_stage = (
+                    "middle" if state.stage == "start_retract" else "return_safe"
+                )
+                self._set_stage(state, next_stage, tracking=1)
+            return axis_cmds, False, False
+
+        if state.stage == "return_safe":
+            axis_cmds, all_ready = self.motion_to_target.move_to_origin_safe(
+                machine_cfg,
+                runtime_cfg,
+                plc_data,
+            )
+            if all_ready:
+                self._work_states[sn] = DeviceFrameMotionState()
+            return axis_cmds, bool(all_ready), False
         if not frames:
             logger.warning(f"SN[{sn}] frame side data not ready")
-            return self.motion_to_target.hold_current_position(machine_cfg, plc_data), False, False
+            return self._build_idle_axis_commands(
+                machine_cfg, runtime_cfg, plc_data, state
+            ), False, False
 
         z_cur = self._get_axis_pos(machine_cfg, plc_data, "z")
         window = self.frame_helper.build_window(
@@ -100,6 +127,12 @@ class MotionOutFxFramePlanning:
             frame_count=len(frames),
         )
         tracking = int(runtime_cfg.get("tracking", machine_cfg.get("tracking", 0)) or 0)
+        preposition_window = self._build_tracking_preposition_window(
+            machine_cfg,
+            runtime_cfg,
+            z_cur,
+            len(frames),
+        ) if tracking else window
         config_error = self._validate_motion_config(
             machine_cfg,
             runtime_cfg,
@@ -112,6 +145,14 @@ class MotionOutFxFramePlanning:
             return axis_cmds, False, True
 
         detect_count = int(self.spray_cfg.get("stage_detect_frame_count", 5) or 0)
+        preposition_signature = bool(
+            tracking
+            and self.frame_helper.has_start_signature(
+                frames,
+                preposition_window,
+                detect_count,
+            )
+        )
         start_signature = self.frame_helper.has_start_signature(
             frames, window, detect_count
         )
@@ -124,6 +165,7 @@ class MotionOutFxFramePlanning:
         window_empty = self.frame_helper.window_is_empty(frames, window)
         self._transition_for_signatures(
             state,
+            preposition=preposition_signature,
             start=start_signature,
             center=center_has_data,
             end=end_signature,
@@ -132,17 +174,22 @@ class MotionOutFxFramePlanning:
         )
 
         if state.stage == "idle":
-            return self.motion_to_target.hold_current_position(machine_cfg, plc_data), False, False
+            return self._build_idle_axis_commands(
+                machine_cfg, runtime_cfg, plc_data, state
+            ), False, False
 
-        if state.stage == "return_safe":
-            axis_cmds, all_ready = self.motion_to_target.move_to_origin_safe(
+        if state.stage == "preposition":
+            axis_cmds, x_ready = self._build_tracking_preposition_commands(
                 machine_cfg,
                 runtime_cfg,
                 plc_data,
+                state,
+                frames,
+                preposition_window,
             )
-            if all_ready:
-                self._work_states[sn] = DeviceFrameMotionState()
-            return axis_cmds, bool(all_ready), False
+            if x_ready and state.tracking_start_seen:
+                self._set_stage(state, "start", tracking)
+            return axis_cmds, False, False
 
         axis_cmds = self.motion_to_target.hold_current_position(machine_cfg, plc_data)
         axis_cmds["y"] = self._build_y_reciprocate_axis(
@@ -155,6 +202,12 @@ class MotionOutFxFramePlanning:
         if tracking and state.stage in {"start", "end"}:
             static_result = self._calculate_static_global_x(
                 machine_cfg, runtime_cfg, frames, window
+            )
+            self._cache_tracking_pre_target(
+                state,
+                machine_cfg,
+                runtime_cfg,
+                static_result,
             )
             x_cmds = self._build_tracking_reciprocate_x_commands(
                 machine_cfg,
@@ -222,6 +275,156 @@ class MotionOutFxFramePlanning:
     def _get_state(self, sn: int) -> DeviceFrameMotionState:
         return self._work_states.setdefault(int(sn), DeviceFrameMotionState())
 
+    def _build_idle_axis_commands(self, machine_cfg, runtime_cfg, plc_data, state):
+        axis_cmds, _ = self.motion_to_target.move_to_origin_safe(
+            machine_cfg,
+            runtime_cfg,
+            plc_data,
+        )
+        axis_cmds = axis_cmds or {}
+        idle_reciprocate_enabled = int(
+            self.spray_cfg.get("frame_idle_y_reciprocate_enabled", 0) or 0
+        )
+        if idle_reciprocate_enabled == 1:
+            axis_cmds["y"] = self._build_y_reciprocate_axis(
+                machine_cfg,
+                runtime_cfg,
+                plc_data,
+                state,
+            )
+        return axis_cmds
+
+    def _build_tracking_preposition_window(self, machine_cfg, runtime_cfg, z_cur, frame_count):
+        window_runtime_cfg = dict(runtime_cfg or {})
+        front_offset = int(
+            window_runtime_cfg.get(
+                "out_z_front_offset",
+                machine_cfg.get("out_z_front_offset", 0),
+            )
+            or 0
+        )
+        x_status_offset = max(
+            0,
+            int(
+                window_runtime_cfg.get(
+                    "x_status_offset",
+                    machine_cfg.get("x_status_offset", 0),
+                )
+                or 0
+            ),
+        )
+        window_runtime_cfg["out_z_front_offset"] = (
+            front_offset + x_status_offset
+        )
+        return self.frame_helper.build_window(
+            machine_cfg,
+            window_runtime_cfg,
+            z_cur=z_cur,
+            frame_count=frame_count,
+        )
+
+    def _build_tracking_preposition_commands(self, machine_cfg, runtime_cfg, plc_data, state, frames, window):
+        axis_cmds = self.motion_to_target.hold_current_position(
+            machine_cfg,
+            plc_data,
+        )
+        axis_cmds["y"] = self._build_y_reciprocate_axis(
+            machine_cfg,
+            runtime_cfg,
+            plc_data,
+            state,
+        )
+        static_result = self._calculate_static_global_x(
+            machine_cfg,
+            runtime_cfg,
+            frames,
+            window,
+        )
+        target = self._cache_tracking_pre_target(
+            state,
+            machine_cfg,
+            runtime_cfg,
+            static_result,
+        )
+        if target is None:
+            return axis_cmds, False
+
+        x_speed = int(
+            runtime_cfg.get(
+                "x_pos_speed",
+                machine_cfg.get("x_pos_speed", 0),
+            )
+            or 0
+        )
+        x_cmds, x_ready = self.motion_to_target.move_x_axes_to_target(
+            machine_cfg,
+            plc_data,
+            target,
+            x_speed,
+        )
+        axis_cmds.update(x_cmds)
+        return axis_cmds, x_ready
+
+    def _build_tracking_retract_commands(self, machine_cfg, runtime_cfg, plc_data, state):
+        axis_cmds = self.motion_to_target.hold_current_position(
+            machine_cfg,
+            plc_data,
+        )
+        target = state.tracking_x_pre_target
+        x_ready = False
+        if target is not None:
+            x_speed = int(
+                runtime_cfg.get(
+                    "x_pos_speed",
+                    machine_cfg.get("x_pos_speed", 0),
+                )
+                or 0
+            )
+            x_cmds, x_ready = self.motion_to_target.move_x_axes_to_target(
+                machine_cfg,
+                plc_data,
+                target,
+                x_speed,
+            )
+            axis_cmds.update(x_cmds)
+
+        axis_cmds["z"] = self._build_z_axis(
+            machine_cfg,
+            runtime_cfg,
+            plc_data,
+            state,
+            tracking=1,
+        )
+        axis_cmds.update(self._build_r_axis_commands(machine_cfg))
+        return axis_cmds, x_ready
+
+    def _cache_tracking_pre_target(self, state, machine_cfg, runtime_cfg, static_result):
+        if state.tracking_x_pre_target is not None:
+            return state.tracking_x_pre_target
+        if static_result.global_x_min is None:
+            return None
+
+        front_offset = int(
+            runtime_cfg.get(
+                "out_front_x_offset",
+                machine_cfg.get("out_front_x_offset", 0),
+            )
+            or 0
+        )
+        x_pre_distance = max(
+            0,
+            int(self.spray_cfg.get("x_pre_distance", 0) or 0),
+        )
+        x_min_limit, x_max_limit = get_axis_position_limits(machine_cfg, "x")
+        state.tracking_x_pre_target = self.x_motion_helper.build_final_x_target(
+            static_result.global_x_min,
+            machine_cfg.get("x_position", 0),
+            front_offset + x_pre_distance,
+            x_min_limit,
+            x_max_limit,
+        )
+        return state.tracking_x_pre_target
+
     def _validate_motion_config(self, machine_cfg, runtime_cfg, window, tracking):
         if tracking not in (0, 1):
             return f"tracking must be 0 or 1, current value: {tracking}"
@@ -273,11 +476,15 @@ class MotionOutFxFramePlanning:
             )
         return None
 
-    def _transition_for_signatures(
-        self, state, *, start, center, end, empty, tracking
-    ):
-        if state.stage == "idle" and start:
-            self._set_stage(state, "start", tracking)
+    def _transition_for_signatures(self, state, *, start, center, end, empty, tracking, preposition=False):
+        if state.stage == "idle":
+            if tracking and (preposition or start):
+                self._set_stage(state, "preposition", tracking)
+                state.tracking_start_seen = bool(start)
+            elif start:
+                self._set_stage(state, "start", tracking)
+        elif state.stage == "preposition" and start:
+            state.tracking_start_seen = True
         elif state.stage == "start" and not tracking and center:
             self._set_stage(state, "middle", tracking)
         elif state.stage == "middle" and end:
@@ -291,7 +498,11 @@ class MotionOutFxFramePlanning:
 
         state.stage = stage
         self._clear_interpolation_state(state)
-        if stage == "start":
+        if stage == "preposition":
+            self._reset_reciprocation_state(state)
+            state.tracking_x_pre_target = None
+            state.tracking_start_seen = False
+        elif stage == "start":
             self._reset_reciprocation_state(state)
             state.start_cycles = 0
             state.end_cycles = 0
@@ -310,6 +521,8 @@ class MotionOutFxFramePlanning:
                 state.y_cycles = 0
         elif stage in {"return_safe", "idle"}:
             self._reset_reciprocation_state(state)
+            state.tracking_x_pre_target = None
+            state.tracking_start_seen = False
 
     @staticmethod
     def _reset_reciprocation_state(state):
@@ -452,17 +665,7 @@ class MotionOutFxFramePlanning:
         )
         return result
 
-    def _build_tracking_reciprocate_x_commands(
-        self,
-        machine_cfg,
-        runtime_cfg,
-        plc_data,
-        state,
-        frames,
-        window,
-        static_result,
-        chain_running,
-    ):
+    def _build_tracking_reciprocate_x_commands(self, machine_cfg, runtime_cfg, plc_data, state, frames, window, static_result, chain_running):
         axis_names = self._get_x_axis_names(machine_cfg)
         if static_result.global_x_min is None or static_result.global_x_max is None:
             return {
@@ -572,17 +775,7 @@ class MotionOutFxFramePlanning:
             )
         return axis_cmds
 
-    def _build_static_position_x_commands(
-        self,
-        machine_cfg,
-        runtime_cfg,
-        plc_data,
-        frames,
-        window,
-        static_result,
-        current_x_offset,
-        chain_running,
-    ):
+    def _build_static_position_x_commands(self, machine_cfg, runtime_cfg, plc_data, frames, window, static_result, current_x_offset, chain_running):
         axis_names = self._get_x_axis_names(machine_cfg)
         if static_result.global_x_min is None:
             return {
@@ -624,17 +817,7 @@ class MotionOutFxFramePlanning:
             axis_cmds[axis_name] = build_axis(target, speed, status, speed_limit)
         return axis_cmds
 
-    def _build_dynamic_x_commands(
-        self,
-        machine_cfg,
-        runtime_cfg,
-        plc_data,
-        state,
-        frames,
-        window,
-        current_x_offset,
-        chain_running,
-    ):
+    def _build_dynamic_x_commands(self, machine_cfg, runtime_cfg, plc_data, state, frames, window, current_x_offset, chain_running):
         y_axis_name = self._get_logical_y_axis_name(machine_cfg)
         y_cur = self._get_axis_pos(machine_cfg, plc_data, y_axis_name)
         y_bin = int(y_cur / self.y_threshold)
@@ -740,9 +923,7 @@ class MotionOutFxFramePlanning:
             )
         return axis_cmds
 
-    def _resolve_current_x_offset(
-        self, state, tracking, frames, window, machine_cfg, runtime_cfg
-    ):
+    def _resolve_current_x_offset(self, state, tracking, frames, window, machine_cfg, runtime_cfg):
         front_offset = int(
             runtime_cfg.get(
                 "out_front_x_offset",
@@ -791,12 +972,23 @@ class MotionOutFxFramePlanning:
             max(front_offset, after_offset),
         )
 
+    def _resolve_follow_z_speed(self, plc_data):
+        chain_speed = int(getattr(plc_data, "ChainSpeed", 0) or 0)
+        if not self._is_chain_running(plc_data):
+            return 0
+        return chain_speed if chain_speed != 0 else 0
+
     def _build_z_axis(self, machine_cfg, runtime_cfg, plc_data, state, tracking):
         z_min_limit, z_max_limit = get_axis_position_limits(machine_cfg, "z")
         z_speed_limit = get_axis_speed_limit(machine_cfg, "z")
-        if tracking and state.stage in {"start", "end"}:
+        if tracking and state.stage in {
+            "start",
+            "end",
+            "start_retract",
+            "end_retract",
+        }:
             target = z_max_limit
-            speed = int(getattr(plc_data, "ChainSpeed", 0) or 0)
+            speed = self._resolve_follow_z_speed(plc_data)
         elif tracking:
             target = clamp_to_limit_yx(
                 get_axis_safe_pos(machine_cfg, "z"),
@@ -835,9 +1027,7 @@ class MotionOutFxFramePlanning:
             )
         return axis_cmds
 
-    def _complete_tracking_stage_if_needed(
-        self, state, tracking, machine_cfg, runtime_cfg
-    ):
+    def _complete_tracking_stage_if_needed(self, state, tracking, machine_cfg, runtime_cfg):
         if not tracking or state.stage not in {"start", "end"}:
             return
 
@@ -853,11 +1043,11 @@ class MotionOutFxFramePlanning:
         if state.stage == "start":
             state.start_cycles = completed_cycles
             if state.start_cycles >= total_cycles:
-                self._set_stage(state, "middle", tracking)
+                self._set_stage(state, "start_retract", tracking)
         else:
             state.end_cycles = completed_cycles
             if state.end_cycles >= total_cycles:
-                self._set_stage(state, "return_safe", tracking)
+                self._set_stage(state, "end_retract", tracking)
 
     def _build_hold_x_command(self, machine_cfg, plc_data, axis_name):
         current_position = self._get_axis_pos(machine_cfg, plc_data, axis_name)
@@ -869,15 +1059,7 @@ class MotionOutFxFramePlanning:
             get_axis_speed_limit(machine_cfg, axis_name),
         )
 
-    def _has_x_status_data(
-        self,
-        frames,
-        window,
-        search_y_min,
-        search_y_max,
-        runtime_cfg,
-        machine_cfg,
-    ):
+    def _has_x_status_data(self, frames, window, search_y_min, search_y_max, runtime_cfg, machine_cfg):
         x_status_offset = int(
             runtime_cfg.get(
                 "x_status_offset",
@@ -953,4 +1135,4 @@ class MotionOutFxFramePlanning:
         return self.motion_to_target._get_axis_current_pos(plc_data, axis_map[axis_name])
 
     def _is_chain_running(self, plc_data):
-        return getattr(plc_data, "ChainStatus", "stopped") in ("moving_forward", "moving_reverse")
+        return getattr(plc_data, "ChainStatus", "stopped") == "moving_forward"

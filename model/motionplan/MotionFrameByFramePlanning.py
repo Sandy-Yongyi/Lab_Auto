@@ -17,7 +17,6 @@ class MotionFrameByFramePlanning:
         moving_frame = SendMovingFrameData()
         enable_value = 0
         stop_chain = False
-        heartbeat_bit = proc.plc_data.Operate & (1 << 14)
 
         # 获取使能状态：Operate 的 bit0
         plc_enable = (proc.plc_data.Operate & 0x01) == 1
@@ -88,9 +87,10 @@ class MotionFrameByFramePlanning:
         proc.last_operate_state = proc.plc_data.Operate
 
         moving_frame.AxisList = axis_list
-        moving_frame.Enable = enable_value | heartbeat_bit
+        moving_frame.Enable = enable_value
         moving_frame.Gun_Cont1 = 0
         moving_frame.Gun_Cont2 = 0
+        moving_frame.HeartBeat = proc.plc_data.HeartBeat
         moving_frame.Operate = 0 if stop_chain else 0x02
         return moving_frame
 

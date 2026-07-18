@@ -97,7 +97,7 @@ class PlcCommunicationProcess(multiprocessing.Process):
         self.num_devices = 0
 
         # 模拟模式相关
-        self.simulation_mode = True  # 启用模拟模式
+        self.simulation_mode = False  # 启用模拟模式
         self.last_simulation_time = 0  # 记录上次模拟处理时间
 
         # 设备运动状态跟踪
@@ -309,7 +309,7 @@ class PlcCommunicationProcess(multiprocessing.Process):
     def _run_main_loop(self):
         """主处理循环，同时处理模拟和实际模式"""
         while True:
-            time.sleep(0.005)  # 减少CPU占用
+            time.sleep(0.09)  # 减少CPU占用
             self._update_plc_data()
             if is_complete_workpiece_mode(self.strategy_name):
                 self._process_workpiece_data()

@@ -55,6 +55,40 @@ class MotionToTarget:
             return int(axis_item.get("Pos", 0) or 0)
         return 0
 
+    def move_x_axes_to_target(self, machine_cfg, plc_data, target, speed, status=0):
+        """将设备全部 X 轴移动到统一限位目标，并返回是否全部到位。"""
+        machine_type = machine_cfg.get("type", "")
+        if machine_type not in MACHINE_AXIS_MAP:
+            return {}, False
+
+        orientation = machine_cfg.get("install_orietation", "left")
+        axis_map = get_axis_map(machine_type, orientation)
+        axis_cmds = {}
+        all_ready = True
+
+        for axis_name in machine_cfg.get("axis_type", []):
+            if not axis_name.startswith("x") or axis_name not in axis_map:
+                continue
+
+            min_limit, max_limit = get_axis_position_limits(machine_cfg, axis_name)
+            limited_target = clamp_to_limit_yx(
+                int(target or 0),
+                min_limit,
+                max_limit,
+            )
+            speed_limit = get_axis_speed_limit(machine_cfg, axis_name)
+            axis_cmds[axis_name] = build_axis(
+                limited_target,
+                int(speed or 0),
+                int(status or 0),
+                speed_limit,
+            )
+            current = self._get_axis_current_pos(plc_data, axis_map[axis_name])
+            if abs(current - limited_target) > int(self.tolerance or 0):
+                all_ready = False
+
+        return axis_cmds, all_ready
+
     def move_to_origin_safe(self, machine_cfg, runtime_cfg, plc_data):
         """
         安全回安全位：
@@ -183,7 +217,7 @@ class MotionToTarget:
 
     @staticmethod
     def _is_chain_running(plc_data):
-        return getattr(plc_data, "ChainStatus", "stopped") in ("moving_forward", "moving_reverse")
+        return getattr(plc_data, "ChainStatus", "stopped") == "moving_forward"
 
     def _check_y_axes_arrived_by_type(self, machine_cfg, plc_data):
         """

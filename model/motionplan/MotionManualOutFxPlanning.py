@@ -74,4 +74,4 @@ class MotionManualOutFxPlanning:
         return self.motion_to_target._get_axis_current_pos(plc_data, axis_map[axis_name])
 
     def _is_chain_running(self, plc_data):
-        return getattr(plc_data, "ChainStatus", "stopped") in ("moving_forward", "moving_reverse")
+        return getattr(plc_data, "ChainStatus", "stopped") == "moving_forward"

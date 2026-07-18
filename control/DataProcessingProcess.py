@@ -96,7 +96,7 @@ class DataProcessingProcess(multiprocessing.Process):
                 if isinstance(block_data, BlockData):
                     self._push_visualization_data(data, block_data)
                     result[direction] = {"stop_pulse": stop_pulse, "data": block_data}
-                    time.sleep(30)  # TODO：调试模式下看数据
+                    # time.sleep(30)  # TODO：调试模式下看数据
 
         # 发送处理结果
         self.machine_data_queue.put(result)

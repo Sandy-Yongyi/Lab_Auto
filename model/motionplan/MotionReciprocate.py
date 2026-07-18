@@ -422,7 +422,7 @@ class MotionReciprocate:
 
     @staticmethod
     def _is_chain_running(plc_data):
-        return getattr(plc_data, "ChainStatus", "stopped") in ("moving_forward", "moving_reverse")
+        return getattr(plc_data, "ChainStatus", "stopped") == "moving_forward"
 
     def _clamp_x_range(self, machine_cfg, x_min, x_max):
         x_min_limit, x_max_limit = get_axis_position_limits(machine_cfg, "x")

@@ -913,7 +913,7 @@ class MotionXNSidePlanning:
 
     @staticmethod
     def _is_chain_running(plc_data):
-        return getattr(plc_data, "ChainStatus", "stopped") in ("moving_forward", "moving_reverse")
+        return getattr(plc_data, "ChainStatus", "stopped") == "moving_forward"
 
     def _get_back_z_speed(self, ctx):
         machine_cfg = ctx["machine_cfg"]

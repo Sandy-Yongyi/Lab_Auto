@@ -52,7 +52,7 @@ class MainFrameController(MainFrame):
         self.filter = DataFilter()
         self.log_queue = multiprocessing.Queue()  # 用于收集子进程输出
         self.control_queue = multiprocessing.Queue()  # 专门用于传输按钮状态的队列
-        self.control_type = 1  # 1: 调用数据处理, 2: 实际采数联调, 3: 只进行画图
+        self.control_type = 2  # 1: 调用数据处理, 2: 实际采数联调, 3: 只进行画图
 
         self.toml_path = os.getcwd() + "\\model\\tomls"
         self.mode_config_path = f"{self.toml_path}\\ModeConfig.toml"
@@ -165,7 +165,7 @@ class MainFrameController(MainFrame):
 
         if self.control_type == 1:
             # --------------------------调试数据处理----------------------------------------
-            data_paths = r"D:\draw_points\6Lab"
+            data_paths = r"D:\draw_points\temp"
             data_name = "20260716_102537.txt"  # 陕西中集
 
             # 创建进程通信队列

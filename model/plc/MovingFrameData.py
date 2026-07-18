@@ -38,6 +38,7 @@ class SendMovingFrameData(PlcFrame):
     Operate: Annotated[int, Int16()] = 0         # 远程操作位（bit0不用，bit1控制链条：0停止，1运动）
     AxisList: Annotated[list[AxisData], Repeat(AXIS_LIST_COUNT)] = field(default_factory=create_axis_list)
 
+
 @dataclass
 class ReceiveMovingFrameData(PlcFrame):
     """接收帧数据结构。"""

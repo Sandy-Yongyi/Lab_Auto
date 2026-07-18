@@ -12,8 +12,11 @@
 # 喷涂伺服定位公差，单位 mm
 spray_pos_tolerance = 30
 
+# X 轴提前定位的安全距离，按帧和完整工件模式共用，单位 mm
+x_pre_distance = 50
+
 # 侧面二维往复计次轴："x" 或 "y"；选择 y 时，y_min -> y_max -> y_min 计一次往复
-side_2d_cycle_axis = "y"
+side_2d_cycle_axis = "x"
 
 # X 轴出粉偏移的界面输入范围，单位 mm
 x_status_offset_min = 0
@@ -54,10 +57,13 @@ outside_total_cycles_max = 5
 # =============================================================================
 
 # Z 窗口边界连续多少帧有数据时，判定工件开始或结束
-stage_detect_frame_count = 5
+stage_detect_frame_count = 8
 
 # 按帧 X 轴计算模式：0=静态全局范围，1=动态逐枪插补
 frame_x_interpolation_enabled = 1
+
+# 设备开启且按帧状态空闲时：0=全部轴回安全位置，1=Y轴在配置范围内往复且X/Z回安全位置
+frame_idle_y_reciprocate_enabled = 1
 
 
 # =============================================================================
@@ -67,9 +73,6 @@ frame_x_interpolation_enabled = 1
 
 # 每把喷枪 Y 轴方向的间距，用于分枪，单位 mm
 gun_distance = 430
-
-# X 轴提前定位的安全距离，单位 mm
-x_pre_distance = 50
 
 # 外翻转轴在 Y 轴底部往复时的最高运动位置，单位 mm
 bottom_recip_y_max = 2000
