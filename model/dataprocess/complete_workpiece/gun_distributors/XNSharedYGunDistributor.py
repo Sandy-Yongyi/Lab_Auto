@@ -45,7 +45,7 @@ xn_side 侧面设备分枪逻辑整理：
 """
 
 
-class XNSideGunDistributor(BaseGunDistributor):
+class XNSharedYGunDistributor(BaseGunDistributor):
     def __init__(self):
         self.spray_cfg = TomlLoader.load(os.path.join(os.getcwd(), "model", "tomls", "SprayConfig.toml"))
 

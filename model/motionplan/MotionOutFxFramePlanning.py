@@ -556,7 +556,7 @@ class MotionOutFxFramePlanning:
         origin_values = [int(v or 0) for v in origin_pos]
         y_origin_min = min(origin_values) if origin_values else 0
         y_origin_max = max(origin_values) if origin_values else 0
-        gun_distance = abs(origin_values[1] - origin_values[0]) if len(origin_values) >= 2 else 0
+        gun_distance = abs(origin_values[1] - origin_values[0]) if len(origin_values) >= 2 else 250
 
         y_min_target = clamp_to_limit_yx(int(y_min_abs) - y_offset - y_origin_min, y_min_limit, y_max_limit)
         y_max_target = clamp_to_limit_yx(int(y_max_abs) + y_offset - y_origin_max, y_min_limit, y_max_limit)
