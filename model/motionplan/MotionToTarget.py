@@ -71,18 +71,9 @@ class MotionToTarget:
                 continue
 
             min_limit, max_limit = get_axis_position_limits(machine_cfg, axis_name)
-            limited_target = clamp_to_limit_yx(
-                int(target or 0),
-                min_limit,
-                max_limit,
-            )
+            limited_target = clamp_to_limit_yx(int(target or 0), min_limit, max_limit)
             speed_limit = get_axis_speed_limit(machine_cfg, axis_name)
-            axis_cmds[axis_name] = build_axis(
-                limited_target,
-                int(speed or 0),
-                int(status or 0),
-                speed_limit,
-            )
+            axis_cmds[axis_name] = build_axis(limited_target, int(speed or 0), int(status or 0), speed_limit)
             current = self._get_axis_current_pos(plc_data, axis_map[axis_name])
             if abs(current - limited_target) > int(self.tolerance or 0):
                 all_ready = False

@@ -5,6 +5,7 @@ from typing import List
 import numpy as np
 from model.utils.LoggerUtil import logger
 # from model.plot.draw import PointCloudVisualizer
+from model.utils.MachineConfigUtil import normalize_offset_value
 from model.utils.TomlLoader import TomlLoader
 from model.dataprocess.DataFilter import DataFilter
 from model.dataprocess.DataSplitting import DataSplitting
@@ -161,9 +162,10 @@ class DataFindBlocks:
         if use_middle == 1:
             return self.x_middle
 
-        offset = float(self.process_config.get("inside_x_min_offset", 100))
-        if offset < 0:
+        raw_offset = float(self.process_config.get("inside_x_min_offset", 100) or 0)
+        if raw_offset < 0:
             raise ValueError("inside_x_min_offset must be greater than or equal to 0")
+        offset = float(normalize_offset_value(raw_offset))
 
         threshold = self.x_min + offset
         if threshold > self.x_max:

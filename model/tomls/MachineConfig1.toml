@@ -100,13 +100,13 @@ z_zeroing_speed = 200
 outside_total_cycles = 1
 inside_total_cycles = 1
 recip_reduce_distance = 0
-x_status_offset = 0
+x_status_offset = 100
 
 [2]
 sn = 2
 type = "xn_side"
 x_position = 1000
-z_position = 5260
+z_position = 5280
 spray_num = 6
 tracking = 0
 y_move_min = 0
@@ -164,4 +164,4 @@ z_zeroing_speed = 200
 outside_total_cycles = 1
 inside_total_cycles = 1
 recip_reduce_distance = 0
-x_status_offset = 0
+x_status_offset = 100

@@ -45,8 +45,8 @@ class MotionCompleteWorkpiecePlanning:
         axis_list = create_axis_list()
         # 检查伺服状态
         servo_alarm = proc.plc_data.Status != 1
-
-        logger.debug(f"plc_enable={plc_enable}, servo_alarm={servo_alarm}, Operate={proc.plc_data.Operate}, {proc.plc_data.Operate:016b}")
+        operate_u16 = proc.plc_data.Operate & 0xFFFF
+        logger.debug(f"plc_enable={plc_enable}, servo_alarm={servo_alarm}, Operate={operate_u16}, {operate_u16:016b}")
         lidar_abnormal = int(getattr(proc, "lidar_status", 0) or 0) in (1, 2, 3)
         force_disable_all = (not plc_enable) or servo_alarm or lidar_abnormal
         force_disable_by_lidar = lidar_abnormal

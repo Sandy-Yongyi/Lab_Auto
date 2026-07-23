@@ -2,7 +2,7 @@ from copy import deepcopy
 import os
 from typing import Optional
 from model.utils.TomlLoader import TomlLoader
-from model.utils.MachineConfigUtil import get_machine_config_path
+from model.utils.MachineConfigUtil import get_machine_config_path, normalize_machine_config_offsets
 from model.formats.complete_workpiece.BlockDataFormat import BlockData, SingleMachineData
 from model.dataprocess.complete_workpiece.gun_distributors.BaseGunDistributor import BaseGunDistributor
 from model.dataprocess.complete_workpiece.gun_distributors.DefaultGunDistributor import DefaultGunDistributor
@@ -27,7 +27,8 @@ class GunDistributor:
             os.path.join(os.getcwd(), "model", "tomls"),
             "complete_workpiece",
         )
-        self.machine_cfg = machine_cfg or TomlLoader.load(machine_config_path)
+        loaded_machine_cfg = machine_cfg or TomlLoader.load(machine_config_path)
+        self.machine_cfg = normalize_machine_config_offsets(loaded_machine_cfg)
         self.spray_cfg = TomlLoader.load(os.getcwd() + "\\model\\tomls\\SprayConfig.toml")
         self.process_cfg = TomlLoader.load(os.getcwd() + "\\model\\tomls\\ProcessConfig.toml")
         self.base_distributor = BaseGunDistributor()

@@ -15,7 +15,7 @@ from model.formats.frame_by_frame.AxisFrameDataFormat import AxisFrameData
 from model.dataprocess.complete_workpiece.GunDistributor import GunDistributor
 from model.motionplan.MotionFrameByFramePlanning import MotionFrameByFramePlanning
 from model.utils.StrategyUtil import is_complete_workpiece_mode, validate_strategy_name
-from model.utils.MachineConfigUtil import get_machine_config_path
+from model.utils.MachineConfigUtil import MACHINE_OFFSET_KEYS, get_machine_config_path, normalize_machine_config_offsets, normalize_machine_offset_values
 from model.motionplan.MotionCompleteWorkpiecePlanning import MotionCompleteWorkpiecePlanning
 
 
@@ -196,7 +196,7 @@ class PlcCommunicationProcess(multiprocessing.Process):
         self.plc_config = TomlLoader.load(self.plc_config_path)
         self.plc_manager = PlcManager(self.plc_config_path)
         self.read_data_config = TomlLoader.load(self.read_data_config_path)
-        self.machine_config = TomlLoader.load(self.machine_config_path)
+        self.machine_config = normalize_machine_config_offsets(TomlLoader.load(self.machine_config_path))
         self.runtime_spray_config = TomlLoader.load(self.spray_config_path)
         self.mode_config = TomlLoader.load(self.mode_config_path)
         self.frame_by_frame_motion_planner = MotionFrameByFramePlanning()
@@ -229,6 +229,8 @@ class PlcCommunicationProcess(multiprocessing.Process):
         for sn_str, cfg in self.machine_config.items():
             sn = int(sn_str)
             self.runtime_machine_config[sn] = self._build_runtime_machine_config(cfg)
+            runtime_offsets = {key: self.runtime_machine_config[sn][key] for key in MACHINE_OFFSET_KEYS}
+            logger.info(f"SN[{sn}] runtime offsets initialized: {runtime_offsets}")
         self.num_devices = max(int(k) for k in self.machine_config) + 1 if self.machine_config else 0
         self.device_origin_complete = {sn: True for sn in range(self.num_devices)}
         self.device_returning_to_origin = {sn: False for sn in range(self.num_devices)}
@@ -732,6 +734,7 @@ class PlcCommunicationProcess(multiprocessing.Process):
             logger.error(f"deal control queue error: {str(e)}")
 
     def _handle_config_update(self, sn: int, config: dict):
+        config = normalize_machine_offset_values(config, fill_missing=False)
         sn_key = str(sn)
         if sn_key in self.machine_config:
             self.machine_config[sn_key].update(config)

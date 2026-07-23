@@ -9,7 +9,7 @@ from model.utils.LoggerUtil import logger
 from model.utils.TomlLoader import TomlLoader
 from model.utils.LidarDirectionUtil import ALL_DIRECTIONS, get_active_directions
 from model.utils.StrategyUtil import is_complete_workpiece_mode, is_frame_by_frame_mode, validate_strategy_name
-from model.utils.WorkpieceOriginUtil import transform_points_for_origin
+from model.utils.WorkpieceOriginUtil import get_origin_side, transform_points_for_origin
 from model.dataprocess.frame_by_frame.BuildSideFrame import build_side_frame
 
 
@@ -96,17 +96,13 @@ class DataProcessWorker(multiprocessing.Process):
                 self.all_frames[direction] = list(combined_frames)
             visualization_points = combined_points
         else:
-            visualization_arrays = []
             for direction in self.directions:
                 direction_points = points_by_source.get(direction, self._empty_points())
                 self.all_frames[direction] = self._split_points_into_frames(direction_points)
-                if direction_points.size > 0:
-                    visualization_arrays.append(direction_points)
-            visualization_points = (
-                np.vstack(visualization_arrays)
-                if visualization_arrays
-                else self._empty_points()
-            )
+            visualization_side = get_origin_side(self.read_data_config)
+            visualization_points = points_by_source.get(visualization_side, self._empty_points())
+            if visualization_points.size == 0:
+                logger.warning(f"No frame_by_frame visualization points found for configured side: {visualization_side}")
 
         if visualization_points.size > 0:
             self._push_visualization_data(visualization_points)
@@ -432,7 +428,7 @@ class DataProcessWorker(multiprocessing.Process):
                     if visualization_points.size == 0:
                         continue
                     self._push_visualization_data(visualization_points)
-                    time.sleep(30)
+                    # time.sleep(30)
         time.sleep(10000000)  # TODO: 调试模式下避免进程结束
 
     def _build_complete_raw_data(self, points_by_source):

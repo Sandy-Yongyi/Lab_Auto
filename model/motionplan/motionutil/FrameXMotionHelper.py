@@ -5,35 +5,17 @@ class FrameXMotionHelper:
     """按帧 X 轴范围、目标和插补速度计算辅助类。"""
 
     @staticmethod
-    def build_static_search_y_range(origin_pos, y_move_min, y_move_max,
-                                    out_down_y_offset, out_up_y_offset):
+    def build_static_search_y_range(origin_pos, y_move_min, y_move_max, out_down_y_offset, out_up_y_offset):
         """计算静态模式下单把喷枪的固定点云 Y 搜索区间。"""
-        search_y_min = (
-            int(origin_pos)
-            + int(y_move_min)
-            - int(out_down_y_offset or 0)
-        )
-        search_y_max = (
-            int(origin_pos)
-            + int(y_move_max)
-            + int(out_up_y_offset or 0)
-        )
+        search_y_min = (int(origin_pos) + int(y_move_min) - int(out_down_y_offset))
+        search_y_max = (int(origin_pos) + int(y_move_max) + int(out_up_y_offset))
         return search_y_min, search_y_max
 
     @staticmethod
-    def build_dynamic_search_y_range(origin_pos, y_cur,
-                                     out_down_y_offset, out_up_y_offset):
+    def build_dynamic_search_y_range(origin_pos, y_cur, out_down_y_offset, out_up_y_offset):
         """计算动态插补模式下单把喷枪当前的点云 Y 搜索区间。"""
-        search_y_min = (
-            int(origin_pos)
-            + int(y_cur)
-            - int(out_down_y_offset or 0)
-        )
-        search_y_max = (
-            int(origin_pos)
-            + int(y_cur)
-            + int(out_up_y_offset or 0)
-        )
+        search_y_min = (int(origin_pos) + int(y_cur) - int(out_down_y_offset))
+        search_y_max = (int(origin_pos) + int(y_cur) + int(out_up_y_offset))
         return search_y_min, search_y_max
 
     @staticmethod
@@ -60,9 +42,7 @@ class FrameXMotionHelper:
         )
 
     @staticmethod
-    def calculate_interpolation_speed(previous_y, current_y, previous_target,
-                                      current_target, y_speed, max_speed,
-                                      initial_speed):
+    def calculate_interpolation_speed(previous_y, current_y, previous_target, current_target, y_speed, max_speed, initial_speed):
         """根据相邻 Y 位置和最终 X 目标差计算插补速度。"""
         max_speed = int(max_speed or 0)
         if previous_y is None or previous_target is None:
@@ -79,25 +59,17 @@ class FrameXMotionHelper:
         return clamp_speed(speed, max_speed)
 
     @staticmethod
-    def build_final_x_target(base_x_min, x_position, current_x_offset,
-                             x_min_limit, x_max_limit):
+    def build_final_x_target(base_x_min, x_position, current_x_offset, x_min_limit, x_max_limit):
         """减去设备定位和当前慢进慢退偏移，并限制最终 X 目标。"""
         x_min_limit = int(x_min_limit)
         x_max_limit = int(x_max_limit)
         if x_min_limit > x_max_limit:
-            raise ValueError(
-                f"X 轴位置限位无效: {x_min_limit} > {x_max_limit}"
-            )
-        target = (
-            int(base_x_min)
-            - int(x_position or 0)
-            - int(current_x_offset or 0)
-        )
+            raise ValueError(f"X 轴位置限位无效: {x_min_limit} > {x_max_limit}")
+        target = (int(base_x_min) - int(x_position or 0) - int(current_x_offset or 100))
         return clamp_to_limit_yx(target, x_min_limit, x_max_limit)
 
     @staticmethod
-    def resolve_slow_offset(start_z_chain, end_z_chain, center_z,
-                            front_offset, after_offset, max_x_offset):
+    def resolve_slow_offset(start_z_chain, end_z_chain, center_z, front_offset, after_offset, max_x_offset):
         """沿用原完整工件逻辑计算慢退、保持和慢进的当前 X 偏移。"""
         max_x_offset = max(0, int(max_x_offset or 0))
         if max_x_offset == 0:

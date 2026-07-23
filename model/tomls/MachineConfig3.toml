@@ -94,7 +94,7 @@ z_zeroing_speed = 200
 outside_total_cycles = 1
 inside_total_cycles = 1
 recip_reduce_distance = 0
-x_status_offset = 0
+x_status_offset = 100
 
 [2]
 sn = 2
@@ -155,4 +155,4 @@ z_zeroing_speed = 200
 outside_total_cycles = 1
 inside_total_cycles = 1
 recip_reduce_distance = 0
-x_status_offset = 0
+x_status_offset = 100

@@ -31,8 +31,8 @@ def clamp_to_limit_z(value: int, min_limit: int, max_limit: int | None = None) -
     if value is None:
         return 0
     if max_limit is None:
-        max_limit = abs(min_limit)
-        min_limit = -abs(min_limit)
+        max_limit = min_limit
+        min_limit = 0
     return max(min_limit, min(value, max_limit))
 
 

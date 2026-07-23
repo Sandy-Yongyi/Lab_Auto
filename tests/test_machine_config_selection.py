@@ -3,7 +3,9 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from control.MachineConfigFrameControl import _normalize_config_for_ui
 from model.utils.MachineConfigUtil import (
+    MACHINE_OFFSET_KEYS,
     get_machine_config_filename,
     validate_machine_params,
 )
@@ -63,6 +65,21 @@ class MachineConfigSelectionTests(unittest.TestCase):
                     config = tomllib.load(config_file)
                 self.assertEqual(set(config), {"0", "1", "2"})
 
+    def test_configured_machine_offsets_are_greater_than_zero(self):
+        config_dir = Path("model/tomls")
+        for index in (1, 2, 3):
+            with (config_dir / f"MachineConfig{index}.toml").open("rb") as config_file:
+                config = tomllib.load(config_file)
+            for sn, machine_cfg in config.items():
+                sections = [machine_cfg]
+                if isinstance(machine_cfg.get("flat"), dict):
+                    sections.append(machine_cfg["flat"])
+                for section in sections:
+                    for key in MACHINE_OFFSET_KEYS:
+                        if key in section:
+                            with self.subTest(index=index, sn=sn, key=key):
+                                self.assertGreater(int(section[key]), 0)
+
     def test_frame_config_has_tracking_and_valid_y_defaults(self):
         with Path("model/tomls/MachineConfig1.toml").open("rb") as config_file:
             config = tomllib.load(config_file)
@@ -109,6 +126,20 @@ class MachineConfigSelectionTests(unittest.TestCase):
         self.assertIn("strategy_name=self.strategy_name", main_source)
         self.assertNotIn('"MachineConfig.toml"', plc_source)
         self.assertNotIn('"MachineConfig.toml"', ui_source)
+
+    def test_ui_normalizes_zero_empty_and_missing_offsets_to_100(self):
+        normalized = _normalize_config_for_ui(
+            {
+                "out_front_x_offset": 0,
+                "out_after_x_offset": None,
+                "flat": {"x_status_offset": ""},
+            }
+        )
+
+        self.assertEqual(normalized["out_front_x_offset"], 100)
+        self.assertEqual(normalized["out_after_x_offset"], 100)
+        self.assertEqual(normalized["in_front_x_offset"], 100)
+        self.assertEqual(normalized["flat"]["x_status_offset"], 100)
 
 
 if __name__ == "__main__":

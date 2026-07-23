@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from model.utils.MachineConfigUtil import get_machine_offset
 
 
 @dataclass(frozen=True)
@@ -45,18 +46,8 @@ class FrameSearchHelper:
                      frame_count: int) -> FrameWindow:
         """根据设备定位、当前 Z 位置和前后偏移建立动态窗口。"""
         z_position = int(machine_cfg.get("z_position", 0) or 0)
-        front_offset = int(
-            runtime_cfg.get(
-                "out_z_front_offset",
-                machine_cfg.get("out_z_front_offset", 0),
-            ) or 0
-        )
-        after_offset = int(
-            runtime_cfg.get(
-                "out_z_after_offset",
-                machine_cfg.get("out_z_after_offset", 0),
-            ) or 0
-        )
+        front_offset = get_machine_offset(machine_cfg, "out_z_front_offset", runtime_cfg)
+        after_offset = get_machine_offset(machine_cfg, "out_z_after_offset", runtime_cfg)
         center_z = z_position + int(z_cur or 0)
         return self.create_window(
             int((center_z - front_offset) / self.z_threshold),

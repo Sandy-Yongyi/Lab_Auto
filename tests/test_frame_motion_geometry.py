@@ -52,6 +52,26 @@ class FrameMotionGeometryTests(unittest.TestCase):
         )
         self.assertEqual((window.start, window.center, window.end), (15, 17, 19))
 
+    def test_zero_z_offsets_use_safe_default_100(self):
+        machine_cfg = {
+            "z_position": 150,
+            "out_z_front_offset": 0,
+            "out_z_after_offset": 0,
+        }
+        runtime_cfg = {
+            "out_z_front_offset": 0,
+            "out_z_after_offset": None,
+        }
+
+        window = self.helper.build_window(
+            machine_cfg,
+            runtime_cfg,
+            z_cur=20,
+            frame_count=100,
+        )
+
+        self.assertEqual((window.start, window.center, window.end), (7, 17, 27))
+
     def test_rejects_non_positive_z_threshold(self):
         for threshold in (0, -10):
             with self.subTest(threshold=threshold):

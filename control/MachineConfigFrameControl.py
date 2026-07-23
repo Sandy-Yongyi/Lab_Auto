@@ -1,7 +1,7 @@
 import os
 from model.utils.TomlLoader import TomlLoader
 from model.utils.LoggerUtil import logger
-from model.utils.MachineConfigUtil import get_machine_config_path, validate_machine_params
+from model.utils.MachineConfigUtil import get_machine_config_path, normalize_machine_offset_values, validate_machine_params
 from model.motionplan.MachineAxisMap import get_axis_position_limits, get_axis_speed_limit
 
 
@@ -98,10 +98,10 @@ def _normalize_origin_pos_for_ui(cfg: dict) -> dict:
 
 
 def _normalize_config_for_ui(cfg: dict) -> dict:
-    normalized = _normalize_origin_pos_for_ui(cfg)
+    normalized = normalize_machine_offset_values(_normalize_origin_pos_for_ui(cfg))
     flat_cfg = normalized.get(FLAT_CONFIG_KEY)
     if isinstance(flat_cfg, dict):
-        normalized[FLAT_CONFIG_KEY] = _normalize_origin_pos_for_ui(flat_cfg)
+        normalized[FLAT_CONFIG_KEY] = normalize_machine_offset_values(_normalize_origin_pos_for_ui(flat_cfg))
     return normalized
 
 
@@ -113,10 +113,10 @@ def _normalize_origin_pos_for_save(values: dict) -> dict:
 
 
 def _normalize_ui_values_for_save(values: dict) -> dict:
-    normalized = _normalize_origin_pos_for_save(values)
+    normalized = normalize_machine_offset_values(_normalize_origin_pos_for_save(values))
     flat_values = normalized.get(FLAT_CONFIG_KEY)
     if isinstance(flat_values, dict):
-        normalized[FLAT_CONFIG_KEY] = _normalize_origin_pos_for_save(flat_values)
+        normalized[FLAT_CONFIG_KEY] = normalize_machine_offset_values(_normalize_origin_pos_for_save(flat_values))
     return normalized
 
 

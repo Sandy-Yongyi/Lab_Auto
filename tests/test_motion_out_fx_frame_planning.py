@@ -842,6 +842,117 @@ class MotionOutFxFramePlanningTests(unittest.TestCase):
                 )
                 self.assertEqual(axis_cmds["z"].Pos, 0)
 
+    def test_nontracking_without_slow_in_out_uses_front_offset(self):
+        self.planner.spray_cfg["frame_x_slow_in_out_enabled"] = 0
+
+        for stage, frame_kind in (("start", "start"), ("middle", "middle"), ("end", "end")):
+            with self.subTest(stage=stage):
+                frames = build_frames(frame_kind)
+                window = self.planner.frame_helper.build_window(
+                    self.machine_cfg,
+                    self.runtime_cfg,
+                    z_cur=0,
+                    frame_count=len(frames),
+                )
+                state = self.planner._get_state(0)
+                state.stage = stage
+
+                offset = self.planner._resolve_current_x_offset(
+                    state,
+                    tracking=0,
+                    frames=frames,
+                    window=window,
+                    machine_cfg=self.machine_cfg,
+                    runtime_cfg=self.runtime_cfg,
+                )
+
+                self.assertEqual(offset, self.runtime_cfg["out_front_x_offset"])
+
+    def test_basic_nontracking_uses_sparse_data_without_stage_detection(self):
+        self.planner.spray_cfg["frame_x_slow_in_out_enabled"] = 0
+        self.planner.spray_cfg["stage_detect_frame_count"] = 0
+        frames = [empty_frame() for _ in range(30)]
+        frames[10] = populated_frame()
+
+        for interpolation_enabled, expected_positions in ((0, (350, 350)), (1, (350, 450))):
+            with self.subTest(interpolation_enabled=interpolation_enabled):
+                self.planner.reset_motion_state()
+                self.planner.spray_cfg["frame_x_interpolation_enabled"] = interpolation_enabled
+
+                axis_cmds, workpiece_complete, config_error = self.planner.auto_out_fx_move(
+                    self.machine_cfg,
+                    self.runtime_cfg,
+                    self.plc,
+                    FrameQueueStub(frames),
+                )
+
+                state = self.planner._get_state(0)
+                self.assertEqual(state.stage, "idle")
+                self.assertFalse(workpiece_complete)
+                self.assertFalse(config_error)
+                self.assertEqual(
+                    (axis_cmds["x1"].Pos, axis_cmds["x2"].Pos),
+                    expected_positions,
+                )
+
+    def test_basic_nontracking_zero_front_offset_uses_safe_default_100(self):
+        self.planner.spray_cfg["frame_x_slow_in_out_enabled"] = 0
+        self.planner.spray_cfg["frame_x_interpolation_enabled"] = 0
+        machine_cfg = dict(self.machine_cfg, out_front_x_offset=0)
+        runtime_cfg = dict(self.runtime_cfg, out_front_x_offset=0)
+        frames = [empty_frame() for _ in range(30)]
+        frames[10] = populated_frame()
+
+        axis_cmds, _, config_error = self.planner.auto_out_fx_move(
+            machine_cfg,
+            runtime_cfg,
+            self.plc,
+            FrameQueueStub(frames),
+        )
+
+        self.assertFalse(config_error)
+        self.assertEqual((axis_cmds["x1"].Pos, axis_cmds["x2"].Pos), (300, 300))
+
+    def test_basic_nontracking_returns_x_safe_and_controls_idle_y_reciprocation(self):
+        self.planner.spray_cfg["frame_x_slow_in_out_enabled"] = 0
+        frames = [empty_frame() for _ in range(30)]
+        for axis_name in ("x1", "x2"):
+            self.set_axis_pos(self.machine_cfg, axis_name, 300)
+
+        for reciprocate_enabled, expected_y in ((0, 0), (1, 100)):
+            with self.subTest(reciprocate_enabled=reciprocate_enabled):
+                self.planner.reset_motion_state()
+                self.planner.spray_cfg["frame_idle_y_reciprocate_enabled"] = reciprocate_enabled
+
+                axis_cmds, _, config_error = self.planner.auto_out_fx_move(
+                    self.machine_cfg,
+                    self.runtime_cfg,
+                    self.plc,
+                    FrameQueueStub(frames),
+                )
+
+                self.assertFalse(config_error)
+                self.assertEqual(axis_cmds["x1"].Pos, 0)
+                self.assertEqual(axis_cmds["x2"].Pos, 0)
+                self.assertEqual(axis_cmds["y"].Pos, expected_y)
+
+    def test_tracking_still_requires_stage_signature_when_slow_in_out_is_disabled(self):
+        self.planner.spray_cfg["frame_x_slow_in_out_enabled"] = 0
+        frames = [empty_frame() for _ in range(30)]
+        frames[10] = populated_frame()
+
+        axis_cmds, _, config_error = self.planner.auto_out_fx_move(
+            self.machine_cfg,
+            dict(self.runtime_cfg, tracking=1),
+            self.plc,
+            FrameQueueStub(frames),
+        )
+
+        self.assertFalse(config_error)
+        self.assertEqual(self.planner._get_state(0).stage, "idle")
+        self.assertEqual(axis_cmds["x1"].Pos, 0)
+        self.assertEqual(axis_cmds["x2"].Pos, 0)
+
     def test_x_status_offset_changes_status_timing_without_changing_target(self):
         self.planner.spray_cfg["frame_x_interpolation_enabled"] = 0
         state = self.planner._get_state(0)
