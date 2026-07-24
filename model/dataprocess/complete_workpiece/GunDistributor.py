@@ -8,6 +8,7 @@ from model.dataprocess.complete_workpiece.gun_distributors.BaseGunDistributor im
 from model.dataprocess.complete_workpiece.gun_distributors.DefaultGunDistributor import DefaultGunDistributor
 from model.dataprocess.complete_workpiece.gun_distributors.InUpGunDistributor import InUpGunDistributor
 from model.dataprocess.complete_workpiece.gun_distributors.OutDownGunDistributor import OutDownGunDistributor
+from model.dataprocess.complete_workpiece.gun_distributors.OutFxGunDistributor import OutFxGunDistributor
 from model.dataprocess.complete_workpiece.gun_distributors.OutUpGunDistributor import OutUpGunDistributor
 from model.dataprocess.complete_workpiece.gun_distributors.XNIndependentYGunDistributor import XNIndependentYGunDistributor
 from model.dataprocess.complete_workpiece.gun_distributors.XNSharedYGunDistributor import XNSharedYGunDistributor
@@ -19,8 +20,9 @@ class GunDistributor:
     XN_UPDOWN_MACHINE_TYPES = {"xn_updown"}
     OUT_DOWN_MACHINE_TYPES = {"out_down"}
     OUT_UP_MACHINE_TYPES = {"out_up"}
+    OUT_FX_MACHINE_TYPES = {"out_fx"}
     XN_SIDE_MACHINE_TYPES = {"xn_side"}
-    NO_DISTRIBUTE_MACHINE_TYPES = {"out_lift", "out_rotate", "in_rotate", "out_fx", "in_lift"}
+    NO_DISTRIBUTE_MACHINE_TYPES = {"out_lift", "out_rotate", "in_rotate", "in_lift"}
 
     def __init__(self, machine_cfg=None):
         machine_config_path = get_machine_config_path(
@@ -37,6 +39,7 @@ class GunDistributor:
         self.independent_side_distributor = XNIndependentYGunDistributor()
         self.updown_distributor = XNUpDownGunDistributor()
         self.out_down_distributor = OutDownGunDistributor()
+        self.out_fx_distributor = OutFxGunDistributor()
         self.out_up_distributor = OutUpGunDistributor()
         self.default_distributor = DefaultGunDistributor()
 
@@ -82,6 +85,9 @@ class GunDistributor:
             return None
 
         if not is_cabinet:
+            if machine_type in self.OUT_FX_MACHINE_TYPES:
+                gun_groups = self.out_fx_distributor.distribute(blockdata, machine_cfg, gun_distance)
+                return SingleMachineData(machine_id=machine_id, gun_groups=gun_groups)
             if machine_type in self.XN_SIDE_MACHINE_TYPES:
                 flat_blockdata = deepcopy(blockdata)
                 flat_blockdata.inside_data = []
@@ -100,6 +106,8 @@ class GunDistributor:
             gun_groups = self.out_up_distributor.distribute(blockdata, machine_cfg)
         elif machine_type in self.OUT_DOWN_MACHINE_TYPES:
             gun_groups = self.out_down_distributor.distribute(blockdata, machine_cfg)
+        elif machine_type in self.OUT_FX_MACHINE_TYPES:
+            gun_groups = self.out_fx_distributor.distribute(blockdata, machine_cfg, gun_distance)
         else:
             gun_groups = self.default_distributor.distribute(machine_cfg)
 

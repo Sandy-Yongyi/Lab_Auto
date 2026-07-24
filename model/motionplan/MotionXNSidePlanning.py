@@ -255,7 +255,7 @@ class MotionXNSidePlanning:
         return None
 
     def _state_front_outside_out_gun(self, ctx):
-        axis_cmds, ready = self._prepare_next_stage(ctx, 0)
+        axis_cmds, ready = self._prepare_next_stage(ctx, self._get_outside_group(ctx), 0)
         ctx["side_machine"] = axis_cmds
         if not ready:
             return None
@@ -331,7 +331,7 @@ class MotionXNSidePlanning:
         return None
 
     def _state_front_inside_out_gun(self, ctx):
-        axis_cmds, ready = self._prepare_next_stage(ctx, 180)
+        axis_cmds, ready = self._prepare_next_stage(ctx, self._get_current_inside_group(ctx), 180)
         ctx["side_machine"] = axis_cmds
         if not ready:
             return None
@@ -395,7 +395,7 @@ class MotionXNSidePlanning:
         return None
 
     def _state_inside_end_face_out_gun(self, ctx):
-        axis_cmds, ready = self._prepare_next_stage(ctx, 180)
+        axis_cmds, ready = self._prepare_next_stage(ctx, self._get_current_inside_group(ctx), 180)
         ctx["side_machine"] = axis_cmds
         if not ready:
             return None
@@ -437,7 +437,7 @@ class MotionXNSidePlanning:
         return None
 
     def _state_after_inside_out_gun(self, ctx):
-        axis_cmds, ready = self._prepare_next_stage(ctx, 0)
+        axis_cmds, ready = self._prepare_next_stage(ctx, self._get_current_inside_group(ctx), 0)
         ctx["side_machine"] = axis_cmds
         if not ready:
             return None
@@ -513,10 +513,15 @@ class MotionXNSidePlanning:
         axis_cmds = self.motiontotarget.hold_current_position(machine_cfg, plc_data)
         axis_cmds["z"] = self._build_z_axis(machine_cfg, self._get_safe_z_target(machine_cfg), self._get_back_z_speed(ctx))
 
-        enabled_by_id = self._get_all_guns_by_id(machine_cfg)
+        enabled_by_id = self._get_enabled_guns_by_id(gun_group)
         status_enabled_by_id = self._get_enabled_guns_by_id(gun_group) if x_status else None
-        y_target = self._get_group_y_lower(gun_group, machine_cfg)
-        axis_cmds["y"] = self._build_y_axis(machine_cfg, y_target, int(runtime_cfg.get("y_pos_speed", machine_cfg.get("y_pos_speed", 100)) or 100))
+        y_speed = int(runtime_cfg.get("y_pos_speed", machine_cfg.get("y_pos_speed", 100)) or 100)
+        if self.recip_manager._is_independent_y_mode(machine_cfg):
+            gun_ranges = self.recip_manager._get_independent_y_ranges(machine_cfg, gun_group, runtime_cfg)
+            spray_num = int(machine_cfg.get("spray_num", 0) or 0)
+            axis_cmds.update(self.recip_manager._build_independent_fixed_y_axes(machine_cfg, plc_data, spray_num, gun_ranges, y_speed, y_speed))
+        else:
+            axis_cmds["y"] = self._build_y_axis(machine_cfg, self._get_group_y_lower(gun_group, machine_cfg), y_speed)
         x_target = self._get_outside_wait_x_target(ctx)
         axis_cmds.update(
             self._build_gun_axes(
@@ -534,20 +539,20 @@ class MotionXNSidePlanning:
         )
         return axis_cmds
 
-    def _prepare_next_stage(self, ctx, r_angle):
+    def _prepare_next_stage(self, ctx, gun_group, r_angle):
         r_angle = self._resolve_side_r_angle(r_angle)
         machine_cfg = ctx["machine_cfg"]
         plc_data = ctx["plc_data"]
         runtime_cfg = ctx["runtime_cfg"]
         axis_cmds = self.motiontotarget.hold_current_position(machine_cfg, plc_data)
         x_target = self._get_outside_wait_x_target(ctx)
-        enabled_by_id = self._get_all_guns_by_id(machine_cfg)
+        enabled_by_id = self._get_enabled_guns_by_id(gun_group)
 
         x_ready = True
-        for axis_name in machine_cfg.get("axis_type", []):
-            if axis_name.startswith("x"):
-                if abs(self._get_axis_pos(machine_cfg, plc_data, axis_name) - x_target) > self.spray_pos_tolerance:
-                    x_ready = False
+        for gun_idx in enabled_by_id:
+            axis_name = f"x{gun_idx + 1}"
+            if abs(self._get_axis_pos(machine_cfg, plc_data, axis_name) - x_target) > self.spray_pos_tolerance:
+                x_ready = False
 
         if x_ready:
             z_target = self._get_safe_z_target(machine_cfg)
@@ -637,21 +642,21 @@ class MotionXNSidePlanning:
 
         _, _, _, _, z_min, z_max = self._get_inside_xyz_range_by_idx(ctx, inside_idx)
         inside_z_span = max(0, int(z_max or 0) - int(z_min or 0))
+        return self._get_inside_enter_threshold(ctx) < inside_z_span
+
+    def _get_inside_enter_threshold(self, ctx):
+        # 进枪需要同时容纳前后偏移、喷枪半径和定位误差，判定与诊断必须共用同一阈值。
         machine_cfg = ctx["machine_cfg"]
         runtime_cfg = ctx["runtime_cfg"]
         front_offset = int(runtime_cfg.get("in_z_front_offset", machine_cfg.get("in_z_front_offset", 0)) or 0)
         after_offset = int(runtime_cfg.get("in_z_after_offset", machine_cfg.get("in_z_after_offset", 0)) or 0)
         spray_radius = int(machine_cfg.get("spray_radius", 0) or 0)
-        return (front_offset + after_offset + 2 * spray_radius + 2 * self.spray_pos_tolerance) < inside_z_span
+        return front_offset + after_offset + 2 * spray_radius + 2 * self.spray_pos_tolerance
 
     def _log_no_enterable_inside(self, ctx, stage_name):
         sn = int(ctx["machine_cfg"].get("sn", 0) or 0)
         inside_columns = ctx.get("inside_data") or []
-        runtime_cfg = ctx["runtime_cfg"]
-        machine_cfg = ctx["machine_cfg"]
-        front_offset = int(runtime_cfg.get("in_z_front_offset", machine_cfg.get("in_z_front_offset", 0)) or 0)
-        after_offset = int(runtime_cfg.get("in_z_after_offset", machine_cfg.get("in_z_after_offset", 0)) or 0)
-        threshold = front_offset + after_offset + 2 * self.spray_pos_tolerance
+        threshold = self._get_inside_enter_threshold(ctx)
         column_summaries = []
 
         for inside_idx, inside_column in enumerate(inside_columns):

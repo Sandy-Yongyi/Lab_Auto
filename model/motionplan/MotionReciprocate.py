@@ -510,9 +510,7 @@ class MotionReciprocate:
             y_states[gun_id] = y_state
 
         if not x_state.initialized:
-            all_y_arrived = self._initialize_independent_2d_y_axes(
-                machine_cfg, plc_data, spray_num, gun_ranges, axis_cmds, cycle_axis, y_speed,
-            )
+            all_y_arrived = self._initialize_independent_2d_y_axes(machine_cfg, plc_data, spray_num, gun_ranges, axis_cmds, y_speed)
             x_arrived, xr_axes = self._build_group_xr_axes(
                 machine_cfg, plc_data, spray_num, enabled_by_id, x_min_target, x_position_speed, 0, r_angle,
             )
@@ -566,7 +564,8 @@ class MotionReciprocate:
             return axis_cmds, True
         return axis_cmds, False
 
-    def _initialize_independent_2d_y_axes(self, machine_cfg, plc_data, spray_num, gun_ranges, axis_cmds, cycle_axis, y_speed):
+    def _initialize_independent_2d_y_axes(self, machine_cfg, plc_data, spray_num, gun_ranges, axis_cmds, y_speed):
+        # 独立Y必须先全部定位到各自下限，再同步开始往复，避免从不同相位启动造成枪间距变化。
         all_y_arrived = True
         for gun_idx in range(spray_num):
             y_name = f"y{gun_idx + 1}"
@@ -579,12 +578,8 @@ class MotionReciprocate:
             gun, y_lower, _ = gun_range
             gun_enabled = int(getattr(gun, "gun_y_enable", 0) or 0) == 1
             y_cur = self._get_axis_pos(machine_cfg, plc_data, y_name)
-            y_target = y_lower if not gun_enabled else y_cur
-            if gun_enabled and cycle_axis == "y":
-                y_target = y_lower
-            y_command_speed = y_speed if cycle_axis == "y" or not gun_enabled else 0
-            axis_cmds[y_name] = self._build_y_axis(machine_cfg, y_target, y_command_speed)
-            if gun_enabled and abs(y_cur - y_target) > self.tolerance:
+            axis_cmds[y_name] = self._build_y_axis(machine_cfg, y_lower, y_speed)
+            if gun_enabled and abs(y_cur - y_lower) > self.tolerance:
                 all_y_arrived = False
         return all_y_arrived
 

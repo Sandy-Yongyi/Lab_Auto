@@ -60,13 +60,13 @@ outside_total_cycles_max = 5
 stage_detect_frame_count = 8
 
 # 按帧 X 轴搜索模式：0=使用原点和Y往复行程的静态范围，1=使用当前Y位置的动态逐枪范围
-frame_x_interpolation_enabled = 0
+frame_x_interpolation_enabled = 1
 
 # 当前喷枪矩形区域无有效点云时的X目标：0=回安全位置，1=使用本帧其他有效区域的全局x_min；全部无数据仍回安全位置
-frame_x_no_data_target_mode = 0
+frame_x_no_data_target_mode = 1
 
 # 动态逐枪Y范围下的X速度：0=固定使用x_pos_speed，1=根据Y/X位置变化计算插补速度
-frame_x_dynamic_speed_mode = 1
+frame_x_dynamic_speed_mode = 0
 
 # 非跟踪按帧运动是否使用 X 轴慢进慢出：0=固定使用前偏移，1=按工件位置动态计算
 frame_x_slow_in_out_enabled = 0
@@ -99,7 +99,7 @@ y_jump_threshold = 1000
 x_scan_max = 500
 
 # 仿形运动模式：0=正常模式，1=二维模式
-fx_mode = 1
+fx_mode = 0
 
 # 侧面往复模式："2d"=二维模式，"rect"=矩形模式
 side_reciprocate_mode = "2d"

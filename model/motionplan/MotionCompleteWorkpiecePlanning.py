@@ -3,6 +3,7 @@ from __future__ import annotations
 from model.motionplan.motionutil.DeviceQueueHelper import DeviceQueueHelper
 from model.motionplan.MachineAxisMap import apply_device_axes_to_list
 from model.motionplan.MotionCleaningPlanning import MotionCleaningPlanning
+from model.motionplan.MotionOutFxCompleteWorkpiecePlanning import MotionOutFxCompleteWorkpiecePlanning
 from model.motionplan.MotionToTarget import MotionToTarget
 from model.motionplan.MotionXNSidePlanning import MotionXNSidePlanning
 from model.plc.MovingFrameData import SendMovingFrameData, create_axis_list
@@ -15,6 +16,7 @@ class MotionCompleteWorkpiecePlanning:
     def __init__(self):
         self.device_queue_helper = DeviceQueueHelper()
         self.cleaning_planner = MotionCleaningPlanning()
+        self.out_fx_planner = MotionOutFxCompleteWorkpiecePlanning()
         self.xn_side_planner = MotionXNSidePlanning()
         self.motion_to_target = MotionToTarget()
 
@@ -131,7 +133,14 @@ class MotionCompleteWorkpiecePlanning:
 
                 machine_type = machine_cfg.get("type", "")
                 device_stop_chain = False
-                if machine_type == "xn_side":
+                if machine_type == "out_fx":
+                    axis_cmds, done, device_stop_chain = self.out_fx_planner.auto_out_fx_complete_move(
+                        machine_cfg=machine_cfg,
+                        runtime_cfg=runtime_cfg,
+                        plc_data=proc.plc_data,
+                        frame_queue=device_queue,
+                    )
+                elif machine_type == "xn_side":
                     axis_cmds, done, device_stop_chain = self.xn_side_planner.auto_xn_side_machine_move(
                         machine_cfg=machine_cfg,
                         runtime_cfg=runtime_cfg,
